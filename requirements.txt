@@ -17,5 +17,13 @@ aiohttp>=3.8.0
 # Para logging e debugging
 coloredlogs>=15.0
 
+# Flask Web Framework (compatível com SPADE 4.1.0 e Jinja2 3.0.3)
+flask==2.0.3
+flask-socketio>=5.1.0
+python-socketio>=5.5.0
+eventlet>=0.33.0
+jinja2==3.0.3  # Requerido pelo SPADE 4.1.0
+markupsafe==2.0.1  # Compatível com Jinja2 3.0.3
+
 # Workaround para Python 3.14: usar variável de ambiente
 # Caso ainda haja erro, use: PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 pip install -r requirements.txt
