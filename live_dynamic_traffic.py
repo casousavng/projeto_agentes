@@ -44,12 +44,12 @@ COLOR_TEXT = (255, 255, 255)
 COLOR_ACCENT = (102, 126, 234)
 COLOR_DISTANCE_LABEL = (150, 150, 200)
 
-# Tipos de ruas e seus pesos
+# Tipos de ruas e seus pesos (agora entre 10-200 para mais realismo)
 ROAD_TYPES = {
-    'highway': {'speed_limit': 80, 'weight': 1.0, 'color': (90, 90, 90)},    # Rapida
-    'main': {'speed_limit': 60, 'weight': 1.5, 'color': (70, 70, 70)},       # Principal
-    'secondary': {'speed_limit': 40, 'weight': 2.5, 'color': (60, 60, 60)},  # Secundaria
-    'residential': {'speed_limit': 30, 'weight': 3.0, 'color': (50, 50, 50)} # Residencial
+    'highway': {'speed_limit': 80, 'weight': 10.0, 'color': (90, 90, 90)},      # Rapida
+    'main': {'speed_limit': 60, 'weight': 50.0, 'color': (70, 70, 70)},         # Principal
+    'secondary': {'speed_limit': 40, 'weight': 100.0, 'color': (60, 60, 60)},   # Secundaria
+    'residential': {'speed_limit': 30, 'weight': 150.0, 'color': (50, 50, 50)}  # Residencial
 }
 
 class Vehicle:
@@ -114,6 +114,9 @@ class DynamicTrafficSimulation:
         
         # Sistema de comunicacao entre agentes (reportes de trafego)
         self.traffic_reports = {}  # {edge_id: {'delay': float, 'reports_count': int}}
+        
+        # Fila de veiculos em cada semaforo (para evitar sobreposicao)
+        self.semaphore_queues = {}  # {node_id: [vehicle_ids]}
         
         # Estatisticas
         self.stats = {
@@ -185,9 +188,12 @@ class DynamicTrafficSimulation:
                     else:
                         road_type = 'residential'
                     
-                    # Adicionar variacao aleatoria (+/- 20%)
+                    # Adicionar variacao GRANDE e aleatoria para ficar mais ludico (10-200)
                     base_weight = ROAD_TYPES[road_type]['weight']
-                    weight = base_weight * random.uniform(0.8, 1.2)
+                    # Variacao entre -50% e +100% para criar rotas bem diferentes
+                    weight = base_weight * random.uniform(0.5, 2.0)
+                    # Garantir entre 10 e 200
+                    weight = max(10.0, min(200.0, weight))
                     
                     # Aresta da esquerda para direita
                     self.edges[edge_id] = {
@@ -233,8 +239,12 @@ class DynamicTrafficSimulation:
                     else:
                         road_type = 'residential'
                     
+                    # Adicionar variacao GRANDE e aleatoria para ficar mais ludico (10-200)
                     base_weight = ROAD_TYPES[road_type]['weight']
-                    weight = base_weight * random.uniform(0.8, 1.2)
+                    # Variacao entre -50% e +100% para criar rotas bem diferentes
+                    weight = base_weight * random.uniform(0.5, 2.0)
+                    # Garantir entre 10 e 200
+                    weight = max(10.0, min(200.0, weight))
                     
                     # Aresta de cima para baixo
                     self.edges[edge_id] = {
@@ -607,6 +617,11 @@ class DynamicTrafficSimulation:
                 self.report_traffic(vehicle, vehicle.current_edge_id, vehicle.waiting_time)
                 vehicle.current_edge_id = None  # Reset
             
+            # Limpar veiculo das filas de semaforo
+            if vehicle.current_node in self.semaphore_queues:
+                if vehicle.id in self.semaphore_queues[vehicle.current_node]:
+                    self.semaphore_queues[vehicle.current_node].remove(vehicle.id)
+            
             vehicle.route_index += 1
             if vehicle.route_index < len(vehicle.route):
                 vehicle.current_node = vehicle.route[vehicle.route_index]
@@ -634,13 +649,45 @@ class DynamicTrafficSimulation:
             # Mover em direcao ao alvo
             speed_pixels = vehicle.speed / 10.0  # Simplificado
             
-            # Verificar semaforo
+            # CORRIGIDO: Verificar semaforo do NO DE DESTINO (target_node), nao do no atual!
+            # Só verificar quando estiver PERTO do target_node (distancia < 25 pixels)
             can_move = True
-            if vehicle.current_node in self.traffic_lights:
-                tl = self.traffic_lights[vehicle.current_node]
-                if tl['state'] == 'red' and vehicle.type != 'ambulance':
-                    can_move = False
-                    vehicle.waiting_time += 1
+            stop_distance = 12  # Distancia de paragem antes do semaforo
+            
+            if distance < 25:  # Só verificar semáforo quando estiver perto do destino
+                if vehicle.target_node in self.traffic_lights and vehicle.type != 'ambulance':
+                    tl = self.traffic_lights[vehicle.target_node]
+                    
+                    # Parar se vermelho OU amarelo (seguranca)
+                    if tl['state'] in ['red', 'yellow']:
+                        can_move = False
+                        vehicle.waiting_time += 1
+                        
+                        # Verificar quantos veiculos ja estao na fila deste semaforo
+                        if vehicle.target_node not in self.semaphore_queues:
+                            self.semaphore_queues[vehicle.target_node] = []
+                        
+                        # Adicionar veiculo a fila se ainda nao estiver
+                        if vehicle.id not in self.semaphore_queues[vehicle.target_node]:
+                            self.semaphore_queues[vehicle.target_node].append(vehicle.id)
+                        
+                        # Calcular posicao na fila
+                        queue_position = self.semaphore_queues[vehicle.target_node].index(vehicle.id)
+                        
+                        # Distancia de paragem baseada na posicao na fila
+                        # Primeiro da fila para a 12px, segundo a 24px, terceiro a 36px, etc
+                        queue_stop_distance = stop_distance + (queue_position * 12)
+                        
+                        # Parar a uma distancia segura (respeitar fila)
+                        if distance > queue_stop_distance:
+                            # Continuar aproximando ate a linha de paragem da fila
+                            vehicle.x += (dx / distance) * (speed_pixels * 0.2)  # Velocidade muito reduzida
+                            vehicle.y += (dy / distance) * (speed_pixels * 0.2)
+                    else:
+                        # Semaforo verde - remover da fila se estiver
+                        if vehicle.target_node in self.semaphore_queues:
+                            if vehicle.id in self.semaphore_queues[vehicle.target_node]:
+                                self.semaphore_queues[vehicle.target_node].remove(vehicle.id)
             
             if can_move:
                 vehicle.x += (dx / distance) * speed_pixels
@@ -813,14 +860,14 @@ class DynamicTrafficSimulation:
                     edge['type']
                 )
                 
-                # Desenhar distancia no meio da aresta
+                # Desenhar distancia (peso) no meio da aresta
                 mid_x = (from_node['x'] + to_node['x']) / 2
                 mid_y = (from_node['y'] + to_node['y']) / 2
                 mid_screen = self.world_to_screen(mid_x, mid_y)
                 
-                # Mostrar distancia arredondada
-                distance_text = str(int(edge['distance']))
-                text = self.font_label.render(distance_text, True, COLOR_DISTANCE_LABEL)
+                # Mostrar peso arredondado
+                weight_text = str(int(edge['weight']))
+                text = self.font_label.render(weight_text, True, COLOR_DISTANCE_LABEL)
                 text_rect = text.get_rect(center=mid_screen)
                 
                 # Fundo semi-transparente para legibilidade
@@ -837,9 +884,35 @@ class DynamicTrafficSimulation:
         for node in self.nodes.values():
             pos = self.world_to_screen(node['x'], node['y'])
             pygame.draw.circle(self.screen, COLOR_NODE, pos, 4)
+        
+        # Desenhar marcadores A e B para o veiculo journey
+        if self.journey_vehicle:
+            # Ponto A (partida)
+            start_node = self.nodes[self.journey_vehicle.start_node]
+            start_pos = self.world_to_screen(start_node['x'], start_node['y'])
+            
+            # Circulo maior para destaque
+            pygame.draw.circle(self.screen, (100, 255, 100), start_pos, 12, 3)
+            
+            # Letra A
+            label_a = self.font_stats.render("A", True, (100, 255, 100))
+            label_rect = label_a.get_rect(center=start_pos)
+            self.screen.blit(label_a, label_rect)
+            
+            # Ponto B (destino)
+            end_node = self.nodes[self.journey_vehicle.end_node]
+            end_pos = self.world_to_screen(end_node['x'], end_node['y'])
+            
+            # Circulo maior para destaque
+            pygame.draw.circle(self.screen, (255, 100, 100), end_pos, 12, 3)
+            
+            # Letra B
+            label_b = self.font_stats.render("B", True, (255, 100, 100))
+            label_rect = label_b.get_rect(center=end_pos)
+            self.screen.blit(label_b, label_rect)
     
     def draw_traffic_lights(self):
-        """Desenha semaforos"""
+        """Desenha semaforos com label SEM"""
         for tl in self.traffic_lights.values():
             node = self.nodes[tl['node_id']]
             pos = self.world_to_screen(node['x'], node['y'])
@@ -851,8 +924,21 @@ class DynamicTrafficSimulation:
             else:
                 color = COLOR_LIGHT_RED
             
+            # Desenhar circulo do semaforo
             pygame.draw.circle(self.screen, color, pos, 8)
             pygame.draw.circle(self.screen, (255, 255, 255), pos, 8, 2)
+            
+            # Label "SEM"
+            label = self.font_label.render("SEM", True, (255, 255, 255))
+            label_rect = label.get_rect(center=(pos[0], pos[1] + 16))
+            
+            # Fundo semi-transparente
+            bg_rect = label_rect.inflate(4, 2)
+            s = pygame.Surface((bg_rect.width, bg_rect.height))
+            s.set_alpha(200)
+            s.fill((0, 0, 0))
+            self.screen.blit(s, bg_rect)
+            self.screen.blit(label, label_rect)
     
     def draw_vehicles(self):
         """Desenha veiculos com labels"""
@@ -886,7 +972,9 @@ class DynamicTrafficSimulation:
                     label_text = "A->B"
                     label_color = (255, 255, 255)
                 else:
-                    label_text = vehicle.id[-2:]  # Ultimos 2 caracteres do ID
+                    # Adicionar "v" antes do numero do veiculo
+                    vehicle_num = vehicle.id.replace('v', '')  # Remover v existente
+                    label_text = "v" + vehicle_num  # Adicionar v novamente
                     label_color = (200, 220, 255)
                 
                 label = self.font_label.render(label_text, True, label_color)
@@ -921,15 +1009,15 @@ class DynamicTrafficSimulation:
         
         text = self.font_stats.render(status, True, color)
         self.screen.blit(text, (20, y_pos))
-        y_pos += 40
+        y_pos += 35  # Reduzido de 40 para 35
         
         # Estatisticas
-        pygame.draw.rect(self.screen, (30, 30, 50), (15, y_pos, SIDEBAR_WIDTH - 30, 240), border_radius=10)
+        pygame.draw.rect(self.screen, (30, 30, 50), (15, y_pos, SIDEBAR_WIDTH - 30, 220), border_radius=10)  # Reduzido de 240 para 220
         y_pos += 15
         
         stats_title = self.font_stats.render("Estatisticas", True, COLOR_ACCENT)
         self.screen.blit(stats_title, (25, y_pos))
-        y_pos += 30
+        y_pos += 25  # Reduzido de 30 para 25
         
         items = [
             "Step: " + str(self.stats['step']),
@@ -944,17 +1032,17 @@ class DynamicTrafficSimulation:
         for item in items:
             text = self.font_label.render(item, True, COLOR_TEXT)
             self.screen.blit(text, (25, y_pos))
-            y_pos += 22
+            y_pos += 20  # Reduzido de 22 para 20
         
-        y_pos += 20
+        y_pos += 5  # Reduzido de 15 para 10
         
         # Controles
-        pygame.draw.rect(self.screen, (30, 30, 50), (15, y_pos, SIDEBAR_WIDTH - 30, 140), border_radius=10)
+        pygame.draw.rect(self.screen, (30, 30, 50), (15, y_pos, SIDEBAR_WIDTH - 30, 130), border_radius=10)  # Reduzido de 140 para 130
         y_pos += 15
         
         controls_title = self.font_stats.render("Controles", True, COLOR_ACCENT)
         self.screen.blit(controls_title, (25, y_pos))
-        y_pos += 30
+        y_pos += 25  # Reduzido de 30 para 25
         
         controls = [
             "S - Start/Stop",
@@ -966,40 +1054,51 @@ class DynamicTrafficSimulation:
         for ctrl in controls:
             text = self.font_label.render(ctrl, True, COLOR_TEXT)
             self.screen.blit(text, (25, y_pos))
-            y_pos += 22
+            y_pos += 18  # Reduzido de 22 para 18
         
-        y_pos += 20
+        y_pos += 10  # Reduzido de 20 para 10
         
         # Legenda
-        pygame.draw.rect(self.screen, (30, 30, 50), (15, y_pos, SIDEBAR_WIDTH - 30, 165), border_radius=10)
+        pygame.draw.rect(self.screen, (30, 30, 50), (15, y_pos, SIDEBAR_WIDTH - 30, 220), border_radius=10)  # Reduzido de 240 para 220
         y_pos += 15
         
         legend_title = self.font_stats.render("Legenda", True, COLOR_ACCENT)
         self.screen.blit(legend_title, (25, y_pos))
-        y_pos += 30
+        y_pos += 25  # Reduzido de 30 para 25
         
+        # Veiculos
         pygame.draw.circle(self.screen, COLOR_VEHICLE_JOURNEY, (35, y_pos + 7), 8)
         text = self.font_label.render("Carro A->B", True, COLOR_TEXT)
         self.screen.blit(text, (55, y_pos))
-        y_pos += 25
+        y_pos += 22  # Reduzido de 25 para 22
         
         pygame.draw.circle(self.screen, COLOR_VEHICLE_NORMAL, (35, y_pos + 7), 8)
-        text = self.font_label.render("Carro normal", True, COLOR_TEXT)
+        text = self.font_label.render("Carro normal (v1, v2...)", True, COLOR_TEXT)
         self.screen.blit(text, (55, y_pos))
-        y_pos += 25
+        y_pos += 22  # Reduzido de 25 para 22
         
         pygame.draw.circle(self.screen, COLOR_VEHICLE_AMBULANCE, (35, y_pos + 7), 8)
-        text = self.font_label.render("Ambulancia", True, COLOR_TEXT)
+        text = self.font_label.render("Ambulancia (AMB)", True, COLOR_TEXT)
         self.screen.blit(text, (55, y_pos))
-        y_pos += 25
+        y_pos += 25  # Reduzido de 30 para 25
+        
+        # Separador
+        text = self.font_label.render("Semaforos (SEM):", True, COLOR_ACCENT)
+        self.screen.blit(text, (25, y_pos))
+        y_pos += 22  # Reduzido de 25 para 22
         
         pygame.draw.circle(self.screen, COLOR_LIGHT_GREEN, (35, y_pos + 7), 6)
-        text = self.font_label.render("Verde", True, COLOR_TEXT)
+        text = self.font_label.render("Verde (livre)", True, COLOR_TEXT)
         self.screen.blit(text, (55, y_pos))
-        y_pos += 25
+        y_pos += 22  # Reduzido de 25 para 22
+        
+        pygame.draw.circle(self.screen, COLOR_LIGHT_YELLOW, (35, y_pos + 7), 6)
+        text = self.font_label.render("Amarelo (atencao)", True, COLOR_TEXT)
+        self.screen.blit(text, (55, y_pos))
+        y_pos += 22  # Reduzido de 25 para 22
         
         pygame.draw.circle(self.screen, COLOR_LIGHT_RED, (35, y_pos + 7), 6)
-        text = self.font_label.render("Vermelho", True, COLOR_TEXT)
+        text = self.font_label.render("Vermelho (parar)", True, COLOR_TEXT)
         self.screen.blit(text, (55, y_pos))
     
     def render(self):
