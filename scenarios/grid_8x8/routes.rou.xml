@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/routes_file.xsd">
+    
+    <!-- Tipo de veículo -->
+    <vType id="car" accel="2.6" decel="4.5" sigma="0.5" length="5" maxSpeed="30" guiShape="passenger"/>
+    <vType id="taxi" accel="3.0" decel="5.0" sigma="0.3" length="5" maxSpeed="35" guiShape="passenger" color="yellow"/>
+    
+    <!-- Veículo principal: viagem do ponto A (n0_0) ao ponto B (n7_7) -->
+    <!-- O SUMO calculará a rota ótima automaticamente -->
+    <trip id="car_journey" type="taxi" depart="0" from="h0_0" to="h7_6" color="1,0,0">
+        <param key="has.rerouting.device" value="true"/>
+    </trip>
+    
+    <!-- Carros adicionais para criar tráfego (saindo em tempos diferentes) -->
+    <trip id="traffic_1" type="car" depart="5" from="h2_0" to="h2_6"/>
+    <trip id="traffic_2" type="car" depart="10" from="v0_0" to="v0_6"/>
+    <trip id="traffic_3" type="car" depart="15" from="h4_0" to="h4_6"/>
+    <trip id="traffic_4" type="car" depart="20" from="v3_0" to="v3_6"/>
+    <trip id="traffic_5" type="car" depart="25" from="h6_0" to="h6_6"/>
+    <trip id="traffic_6" type="car" depart="30" from="v5_0" to="v5_6"/>
+    <trip id="traffic_7" type="car" depart="35" from="h1_0" to="h1_6"/>
+    <trip id="traffic_8" type="car" depart="40" from="v1_0" to="v1_6"/>
+    <trip id="traffic_9" type="car" depart="45" from="h5_0" to="h5_6"/>
+    <trip id="traffic_10" type="car" depart="50" from="v7_0" to="v7_6"/>
+    
+    <!-- Mais tráfego nas verticais -->
+    <trip id="traffic_11" type="car" depart="55" from="v2_0" to="v2_6"/>
+    <trip id="traffic_12" type="car" depart="60" from="v4_0" to="v4_6"/>
+    <trip id="traffic_13" type="car" depart="65" from="v6_0" to="v6_6"/>
+    
+    <!-- Tráfego cruzado -->
+    <trip id="traffic_14" type="car" depart="70" from="h3_0" to="h3_6"/>
+    <trip id="traffic_15" type="car" depart="75" from="h7_0" to="h7_6"/>
+    
+</routes>

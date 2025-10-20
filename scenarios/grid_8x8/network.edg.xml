@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Edges (ruas) da rede 8x8 com características variadas -->
+<edges xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/edges_file.xsd">
+    
+    <!-- RUAS HORIZONTAIS (linhas) -->
+    
+    <!-- Linha 0 (inferior) - mista de arterial e collector -->
+    <edge id="h0_0" from="n0_0" to="n0_1" type="arterial"/>
+    <edge id="h0_1" from="n0_1" to="n0_2" type="collector"/>
+    <edge id="h0_2" from="n0_2" to="n0_3" type="arterial"/>
+    <edge id="h0_3" from="n0_3" to="n0_4" type="collector"/>
+    <edge id="h0_4" from="n0_4" to="n0_5" type="arterial"/>
+    <edge id="h0_5" from="n0_5" to="n0_6" type="collector"/>
+    <edge id="h0_6" from="n0_6" to="n0_7" type="arterial"/>
+    
+    <!-- Linha 1 - mista -->
+    <edge id="h1_0" from="n1_0" to="n1_1" type="collector"/>
+    <edge id="h1_1" from="n1_1" to="n1_2" type="local"/>
+    <edge id="h1_2" from="n1_2" to="n1_3" type="collector"/>
+    <edge id="h1_3" from="n1_3" to="n1_4" type="local"/>
+    <edge id="h1_4" from="n1_4" to="n1_5" type="collector"/>
+    <edge id="h1_5" from="n1_5" to="n1_6" type="local"/>
+    <edge id="h1_6" from="n1_6" to="n1_7" type="collector"/>
+    
+    <!-- Linha 2 - arterial -->
+    <edge id="h2_0" from="n2_0" to="n2_1" type="arterial"/>
+    <edge id="h2_1" from="n2_1" to="n2_2" type="arterial"/>
+    <edge id="h2_2" from="n2_2" to="n2_3" type="arterial"/>
+    <edge id="h2_3" from="n2_3" to="n2_4" type="arterial"/>
+    <edge id="h2_4" from="n2_4" to="n2_5" type="arterial"/>
+    <edge id="h2_5" from="n2_5" to="n2_6" type="arterial"/>
+    <edge id="h2_6" from="n2_6" to="n2_7" type="arterial"/>
+    
+    <!-- Linha 3 - local (lenta) -->
+    <edge id="h3_0" from="n3_0" to="n3_1" type="local"/>
+    <edge id="h3_1" from="n3_1" to="n3_2" type="local"/>
+    <edge id="h3_2" from="n3_2" to="n3_3" type="local"/>
+    <edge id="h3_3" from="n3_3" to="n3_4" type="local"/>
+    <edge id="h3_4" from="n3_4" to="n3_5" type="local"/>
+    <edge id="h3_5" from="n3_5" to="n3_6" type="local"/>
+    <edge id="h3_6" from="n3_6" to="n3_7" type="local"/>
+    
+    <!-- Linha 4 - highway (rápida) -->
+    <edge id="h4_0" from="n4_0" to="n4_1" type="highway"/>
+    <edge id="h4_1" from="n4_1" to="n4_2" type="highway"/>
+    <edge id="h4_2" from="n4_2" to="n4_3" type="highway"/>
+    <edge id="h4_3" from="n4_3" to="n4_4" type="highway"/>
+    <edge id="h4_4" from="n4_4" to="n4_5" type="highway"/>
+    <edge id="h4_5" from="n4_5" to="n4_6" type="highway"/>
+    <edge id="h4_6" from="n4_6" to="n4_7" type="highway"/>
+    
+    <!-- Linha 5 - collector -->
+    <edge id="h5_0" from="n5_0" to="n5_1" type="collector"/>
+    <edge id="h5_1" from="n5_1" to="n5_2" type="collector"/>
+    <edge id="h5_2" from="n5_2" to="n5_3" type="collector"/>
+    <edge id="h5_3" from="n5_3" to="n5_4" type="collector"/>
+    <edge id="h5_4" from="n5_4" to="n5_5" type="collector"/>
+    <edge id="h5_5" from="n5_5" to="n5_6" type="collector"/>
+    <edge id="h5_6" from="n5_6" to="n5_7" type="collector"/>
+    
+    <!-- Linha 6 - arterial -->
+    <edge id="h6_0" from="n6_0" to="n6_1" type="arterial"/>
+    <edge id="h6_1" from="n6_1" to="n6_2" type="arterial"/>
+    <edge id="h6_2" from="n6_2" to="n6_3" type="arterial"/>
+    <edge id="h6_3" from="n6_3" to="n6_4" type="arterial"/>
+    <edge id="h6_4" from="n6_4" to="n6_5" type="arterial"/>
+    <edge id="h6_5" from="n6_5" to="n6_6" type="arterial"/>
+    <edge id="h6_6" from="n6_6" to="n6_7" type="arterial"/>
+    
+    <!-- Linha 7 (superior) - mista -->
+    <edge id="h7_0" from="n7_0" to="n7_1" type="collector"/>
+    <edge id="h7_1" from="n7_1" to="n7_2" type="arterial"/>
+    <edge id="h7_2" from="n7_2" to="n7_3" type="collector"/>
+    <edge id="h7_3" from="n7_3" to="n7_4" type="arterial"/>
+    <edge id="h7_4" from="n7_4" to="n7_5" type="collector"/>
+    <edge id="h7_5" from="n7_5" to="n7_6" type="arterial"/>
+    <edge id="h7_6" from="n7_6" to="n7_7" type="collector"/>
+    
+    <!-- RUAS VERTICAIS (colunas) -->
+    
+    <!-- Coluna 0 (esquerda) - arterial -->
+    <edge id="v0_0" from="n0_0" to="n1_0" type="arterial"/>
+    <edge id="v0_1" from="n1_0" to="n2_0" type="arterial"/>
+    <edge id="v0_2" from="n2_0" to="n3_0" type="arterial"/>
+    <edge id="v0_3" from="n3_0" to="n4_0" type="arterial"/>
+    <edge id="v0_4" from="n4_0" to="n5_0" type="arterial"/>
+    <edge id="v0_5" from="n5_0" to="n6_0" type="arterial"/>
+    <edge id="v0_6" from="n6_0" to="n7_0" type="arterial"/>
+    
+    <!-- Coluna 1 - com semáforos, collector -->
+    <edge id="v1_0" from="n0_1" to="n1_1" type="collector"/>
+    <edge id="v1_1" from="n1_1" to="n2_1" type="collector"/>
+    <edge id="v1_2" from="n2_1" to="n3_1" type="collector"/>
+    <edge id="v1_3" from="n3_1" to="n4_1" type="collector"/>
+    <edge id="v1_4" from="n4_1" to="n5_1" type="collector"/>
+    <edge id="v1_5" from="n5_1" to="n6_1" type="collector"/>
+    <edge id="v1_6" from="n6_1" to="n7_1" type="collector"/>
+    
+    <!-- Coluna 2 - local (lenta) -->
+    <edge id="v2_0" from="n0_2" to="n1_2" type="local"/>
+    <edge id="v2_1" from="n1_2" to="n2_2" type="local"/>
+    <edge id="v2_2" from="n2_2" to="n3_2" type="local"/>
+    <edge id="v2_3" from="n3_2" to="n4_2" type="local"/>
+    <edge id="v2_4" from="n4_2" to="n5_2" type="local"/>
+    <edge id="v2_5" from="n5_2" to="n6_2" type="local"/>
+    <edge id="v2_6" from="n6_2" to="n7_2" type="local"/>
+    
+    <!-- Coluna 3 - com semáforos, highway -->
+    <edge id="v3_0" from="n0_3" to="n1_3" type="highway"/>
+    <edge id="v3_1" from="n1_3" to="n2_3" type="highway"/>
+    <edge id="v3_2" from="n2_3" to="n3_3" type="highway"/>
+    <edge id="v3_3" from="n3_3" to="n4_3" type="highway"/>
+    <edge id="v3_4" from="n4_3" to="n5_3" type="highway"/>
+    <edge id="v3_5" from="n5_3" to="n6_3" type="highway"/>
+    <edge id="v3_6" from="n6_3" to="n7_3" type="highway"/>
+    
+    <!-- Coluna 4 - arterial -->
+    <edge id="v4_0" from="n0_4" to="n1_4" type="arterial"/>
+    <edge id="v4_1" from="n1_4" to="n2_4" type="arterial"/>
+    <edge id="v4_2" from="n2_4" to="n3_4" type="arterial"/>
+    <edge id="v4_3" from="n3_4" to="n4_4" type="arterial"/>
+    <edge id="v4_4" from="n4_4" to="n5_4" type="arterial"/>
+    <edge id="v4_5" from="n5_4" to="n6_4" type="arterial"/>
+    <edge id="v4_6" from="n6_4" to="n7_4" type="arterial"/>
+    
+    <!-- Coluna 5 - com semáforos, collector -->
+    <edge id="v5_0" from="n0_5" to="n1_5" type="collector"/>
+    <edge id="v5_1" from="n1_5" to="n2_5" type="collector"/>
+    <edge id="v5_2" from="n2_5" to="n3_5" type="collector"/>
+    <edge id="v5_3" from="n3_5" to="n4_5" type="collector"/>
+    <edge id="v5_4" from="n4_5" to="n5_5" type="collector"/>
+    <edge id="v5_5" from="n5_5" to="n6_5" type="collector"/>
+    <edge id="v5_6" from="n6_5" to="n7_5" type="collector"/>
+    
+    <!-- Coluna 6 - local -->
+    <edge id="v6_0" from="n0_6" to="n1_6" type="local"/>
+    <edge id="v6_1" from="n1_6" to="n2_6" type="local"/>
+    <edge id="v6_2" from="n2_6" to="n3_6" type="local"/>
+    <edge id="v6_3" from="n3_6" to="n4_6" type="local"/>
+    <edge id="v6_4" from="n4_6" to="n5_6" type="local"/>
+    <edge id="v6_5" from="n5_6" to="n6_6" type="local"/>
+    <edge id="v6_6" from="n6_6" to="n7_6" type="local"/>
+    
+    <!-- Coluna 7 (direita) - arterial -->
+    <edge id="v7_0" from="n0_7" to="n1_7" type="arterial"/>
+    <edge id="v7_1" from="n1_7" to="n2_7" type="arterial"/>
+    <edge id="v7_2" from="n2_7" to="n3_7" type="arterial"/>
+    <edge id="v7_3" from="n3_7" to="n4_7" type="arterial"/>
+    <edge id="v7_4" from="n4_7" to="n5_7" type="arterial"/>
+    <edge id="v7_5" from="n5_7" to="n6_7" type="arterial"/>
+    <edge id="v7_6" from="n6_7" to="n7_7" type="arterial"/>
+    
+</edges>
