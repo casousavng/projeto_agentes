@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 Flask Web Application - Traffic Simulation Replay
 Visualização dos dados coletados dos agentes SPADE via SQLite
@@ -85,6 +86,15 @@ def start_simulation():
                 'error': 'Nenhum dado encontrado. Execute collect_simulation_data.py primeiro!'
             }), 404
         
+        # Carregar topologia da rede
+        topology = collector.get_network_topology()
+        
+        if not topology['nodes']:
+            return jsonify({
+                'success': False,
+                'error': 'Topologia da rede não encontrada!'
+            }), 404
+        
         simulation_state['running'] = True
         simulation_state['current_step'] = 0
         simulation_state['max_steps'] = total_snapshots
@@ -96,9 +106,12 @@ def start_simulation():
         thread.start()
         
         return jsonify({
+            'status': 'started',
             'success': True,
-            'message': f'Replay iniciado com {total_snapshots} frames',
-            'total_frames': total_snapshots
+            'message': 'Replay iniciado com {} frames'.format(total_snapshots),
+            'total_frames': total_snapshots,
+            'nodes': topology['nodes'],
+            'edges': topology['edges']
         })
     
     except Exception as e:
@@ -169,10 +182,18 @@ def playback_loop():
     print("🎬 Iniciando replay...")
     
     try:
-        # Recuperar dados step a step
-        step = 0
+        # Obter range de steps disponíveis
+        step_range = collector.get_step_range()
+        min_step = step_range['min']
+        max_step = step_range['max']
         
-        while simulation_state['running'] and step < simulation_state['max_steps']:
+        print("   Steps disponíveis: {} a {} ({} snapshots)".format(min_step, max_step, step_range['count']))
+        
+        # Recuperar dados step a step
+        current_step_db = min_step
+        step_index = 0
+        
+        while simulation_state['running'] and current_step_db <= max_step:
             # Pausar se necessário
             while simulation_state['paused'] and simulation_state['running']:
                 time.sleep(0.1)
@@ -180,26 +201,24 @@ def playback_loop():
             if not simulation_state['running']:
                 break
             
-            # Buscar snapshot (steps são salvos a cada 10 steps = 1 segundo simulado)
-            # Então step 0 = step_db 0, step 1 = step_db 10, etc.
-            step_db = step * 10
-            
-            snapshot = collector.get_snapshot_by_step(step_db)
+            # Buscar snapshot
+            snapshot = collector.get_snapshot_by_step(current_step_db)
             
             if not snapshot:
-                print(f"⚠️  Snapshot {step_db} não encontrado")
-                step += 1
+                print("⚠️  Snapshot {} não encontrado".format(current_step_db))
+                current_step_db += 10
                 continue
             
-            simulation_state['current_step'] = step
+            simulation_state['current_step'] = step_index
             
             # Emitir dados via WebSocket
             socketio.emit('simulation_update', {
-                'step': step,
+                'step': step_index,
+                'step_db': current_step_db,
                 'simulation_time': snapshot['simulation_time'],
                 'vehicles': snapshot['vehicles'],
                 'traffic_lights': snapshot['traffic_lights'],
-                'statistics': snapshot['statistics']
+                'stats': snapshot['statistics']
             })
             
             # Aguardar de acordo com a velocidade
@@ -207,19 +226,20 @@ def playback_loop():
             sleep_time = 0.1 / simulation_state['playback_speed']
             time.sleep(sleep_time)
             
-            step += 1
+            current_step_db += 10
+            step_index += 1
         
-        print("✅ Replay concluído")
+        print("✅ Replay concluído ({} frames)".format(step_index))
         simulation_state['running'] = False
         
         # Notificar fim
         socketio.emit('simulation_complete', {
             'message': 'Replay concluído!',
-            'total_steps': step
+            'total_steps': step_index
         })
     
     except Exception as e:
-        print(f"❌ Erro no replay: {e}")
+        print("❌ Erro no replay: {}".format(e))
         import traceback
         traceback.print_exc()
         simulation_state['running'] = False
@@ -259,8 +279,8 @@ if __name__ == '__main__':
         total = collector_temp.get_snapshot_count()
         collector_temp.close()
         
-        print(f"✅ Banco de dados encontrado: {total} snapshots disponíveis")
-        print(f"   Duração: ~{total/10/60:.2f} minutos de simulação\n")
+        print("✅ Banco de dados encontrado: {} snapshots disponíveis".format(total))
+        print("   Duração: ~{:.2f} minutos de simulação\n".format(total/10/60))
         print("="*70 + "\n")
     
     print("🌐 Abrindo servidor em http://localhost:5001")

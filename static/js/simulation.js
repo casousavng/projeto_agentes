@@ -8,8 +8,8 @@ const ctx = canvas.getContext('2d');
 let simulationData = {
     nodes: [],
     edges: [],
-    vehicles: {},
-    traffic_lights: {},
+    vehicles: [],  // Array em vez de objeto
+    traffic_lights: [],  // Array em vez de objeto
     stats: {},
     step: 0
 };
@@ -58,10 +58,13 @@ socket.on('disconnect', () => {
 });
 
 socket.on('simulation_update', (data) => {
-    simulationData.vehicles = data.vehicles;
-    simulationData.traffic_lights = data.traffic_lights;
-    simulationData.stats = data.stats;
-    simulationData.step = data.step;
+    // Backend envia arrays, então usamos diretamente
+    simulationData.vehicles = data.vehicles || [];
+    simulationData.traffic_lights = data.traffic_lights || [];
+    simulationData.stats = data.stats || {};
+    simulationData.step = data.step || 0;
+    
+    console.log('📦 Update recebido - Step:', data.step, 'Veículos:', simulationData.vehicles.length, 'Semáforos:', simulationData.traffic_lights.length);
     
     updateStats();
     render();
@@ -354,11 +357,11 @@ function render() {
     // 2. Desenha nodes (junções)
     simulationData.nodes.forEach(node => drawNode(node));
     
-    // 3. Desenha semáforos
-    Object.values(simulationData.traffic_lights).forEach(tl => drawTrafficLight(tl));
+    // 3. Desenha semáforos (agora é array)
+    simulationData.traffic_lights.forEach(tl => drawTrafficLight(tl));
     
-    // 4. Desenha veículos
-    Object.values(simulationData.vehicles).forEach(vehicle => drawVehicle(vehicle));
+    // 4. Desenha veículos (agora é array)
+    simulationData.vehicles.forEach(vehicle => drawVehicle(vehicle));
     
     // Grid de referência (opcional, se zoom alto)
     if (viewport.scale > 1.5) {

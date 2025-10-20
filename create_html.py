@@ -1,4 +1,7 @@
-<!DOCTYPE html>
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+html_content = """<!DOCTYPE html>
 <html lang="pt">
 <head>
     <meta charset="UTF-8">
@@ -187,3 +190,9 @@ render();
     </script>
 </body>
 </html>"""
+
+with open('templates/index.html', 'w', encoding='utf-8') as f:
+    f.write(html_content)
+
+print('✅ Ficheiro index.html criado com sucesso!')
+print(f'📏 Tamanho: {len(html_content)} bytes')

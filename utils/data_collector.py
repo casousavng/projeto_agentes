@@ -121,12 +121,13 @@ class SimulationDataCollector:
             json.dumps(edges)
         ))
         
-        self.conn.commit()
+        conn.commit()
         print(f"✅ Topologia salva: {len(nodes)} nós, {len(edges)} arestas")
     
     def create_snapshot(self, step: int, simulation_time: float) -> int:
         """Cria um novo snapshot da simulação e retorna seu ID"""
-        cursor = self.conn.cursor()
+        conn = self._get_connection()
+        cursor = conn.cursor()
         
         cursor.execute("""
             INSERT INTO simulation_snapshots (timestamp, step, simulation_time, created_at)
@@ -138,12 +139,13 @@ class SimulationDataCollector:
             datetime.now().isoformat()
         ))
         
-        self.conn.commit()
+        conn.commit()
         return cursor.lastrowid
     
     def save_vehicles(self, snapshot_id: int, vehicles: List[Dict]):
         """Salva o estado dos veículos neste snapshot"""
-        cursor = self.conn.cursor()
+        conn = self._get_connection()
+        cursor = conn.cursor()
         
         for vehicle in vehicles:
             cursor.execute("""
@@ -167,11 +169,12 @@ class SimulationDataCollector:
                 vehicle.get('color')
             ))
         
-        self.conn.commit()
+        conn.commit()
     
     def save_traffic_lights(self, snapshot_id: int, traffic_lights: List[Dict]):
         """Salva o estado dos semáforos neste snapshot"""
-        cursor = self.conn.cursor()
+        conn = self._get_connection()
+        cursor = conn.cursor()
         
         for tl in traffic_lights:
             cursor.execute("""
@@ -189,11 +192,12 @@ class SimulationDataCollector:
                 tl.get('phase_duration')
             ))
         
-        self.conn.commit()
+        conn.commit()
     
     def save_statistics(self, snapshot_id: int, stats: Dict):
         """Salva estatísticas agregadas do snapshot"""
-        cursor = self.conn.cursor()
+        conn = self._get_connection()
+        cursor = conn.cursor()
         
         cursor.execute("""
             INSERT INTO statistics (
@@ -209,11 +213,12 @@ class SimulationDataCollector:
             stats['avg_waiting_time']
         ))
         
-        self.conn.commit()
+        conn.commit()
     
     def get_network_topology(self) -> Dict:
         """Recupera a topologia da rede"""
-        cursor = self.conn.cursor()
+        conn = self._get_connection()
+        cursor = conn.cursor()
         cursor.execute("SELECT nodes, edges FROM network_topology ORDER BY id DESC LIMIT 1")
         row = cursor.fetchone()
         
@@ -226,13 +231,25 @@ class SimulationDataCollector:
     
     def get_snapshot_count(self) -> int:
         """Retorna o número total de snapshots"""
-        cursor = self.conn.cursor()
+        conn = self._get_connection()
+        cursor = conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM simulation_snapshots")
         return cursor.fetchone()[0]
     
+    def get_step_range(self):
+        """Retorna (min_step, max_step, count) dos snapshots disponíveis"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT MIN(step), MAX(step), COUNT(*) FROM simulation_snapshots")
+        row = cursor.fetchone()
+        if row and row[0] is not None:
+            return {'min': row[0], 'max': row[1], 'count': row[2]}
+        return {'min': 0, 'max': 0, 'count': 0}
+    
     def get_snapshot_by_step(self, step: int) -> Dict:
         """Recupera um snapshot específico com todos os dados"""
-        cursor = self.conn.cursor()
+        conn = self._get_connection()
+        cursor = conn.cursor()
         
         # Busca o snapshot
         cursor.execute("""
@@ -313,13 +330,14 @@ class SimulationDataCollector:
     
     def clear_all_data(self):
         """Limpa todos os dados da simulação (mantém estrutura)"""
-        cursor = self.conn.cursor()
+        conn = self._get_connection()
+        cursor = conn.cursor()
         cursor.execute("DELETE FROM statistics")
         cursor.execute("DELETE FROM traffic_lights")
         cursor.execute("DELETE FROM vehicles")
         cursor.execute("DELETE FROM simulation_snapshots")
         cursor.execute("DELETE FROM network_topology")
-        self.conn.commit()
+        conn.commit()
         print("✅ Todos os dados foram limpos")
     
     def close(self):
