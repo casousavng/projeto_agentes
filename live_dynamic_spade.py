@@ -8,7 +8,7 @@ Simulacao Dinamica de Trafego com SPADE + Pygame
 - Roteamento inteligente A*
 """
 
-import pygame
+import pygame # type: ignore
 import sys
 import asyncio
 import threading
@@ -67,6 +67,8 @@ class SPADETrafficSimulation:
         self.font_title = pygame.font.SysFont('Arial', 24, bold=True)
         self.font_stats = pygame.font.SysFont('Arial', 16, bold=True)
         self.font_label = pygame.font.SysFont('Arial', 12)
+        # Fonte Unicode para símbolos simples
+        self.font_symbols = pygame.font.SysFont('Arial Unicode MS,DejaVu Sans', 18)
         
         # Rede
         self.nodes = {}
@@ -98,16 +100,19 @@ class SPADETrafficSimulation:
         self.speed_multiplier = 2.0  # Multiplicador de velocidade (2.0x a 5.0x) - AUMENTADO
         self.slider_dragging = False
         
+        # Controle de tempo para cálculo de espera
+        self.last_update_time = time.time()
+        
         # Estatisticas
         self.stats = {
             'step': 0,
             'total_vehicles': 15,  # 15 veículos (1 journey + 10 carros + 4 ambulâncias AMB)
-            'active_vehicles': 15,
-            'completed_trips': 0,
-            'avg_trip_time': 0,
-            'total_waiting': 0,
             'journey_speed': 0,  # Velocidade atual do journey vehicle
-            'journey_total_weight': 0  # Peso total da rota A->B
+            'journey_total_cost': 0,  # Custo total da rota (soma dos pesos das arestas)
+            'journey_cost_traveled': 0,  # Custo acumulado das arestas percorridas
+            'journey_travel_time': 0,  # Tempo de viagem (em segundos)
+            'journey_start_time': None,  # Timestamp de início da viagem
+            'journey_last_position': None  # Última posição para calcular distância percorrida
         }
         
         # Pontos A e B para journey vehicle
@@ -545,28 +550,63 @@ class SPADETrafficSimulation:
         
         self.stats['step'] += 1
         
-        # Atualizar estatisticas do coordenador
-        if self.coordinator_agent:
-            coord_stats = self.coordinator_agent.statistics
-            self.stats['completed_trips'] = coord_stats['total_arrivals']
-            self.stats['avg_trip_time'] = int(coord_stats['avg_travel_time'])
-            
-            # Contar veiculos ativos
-            active = sum(1 for v in self.vehicle_agents if v.moving and v.arrival_time is None)
-            self.stats['active_vehicles'] = active
-        
-        # Atualizar velocidade e peso total do journey vehicle (vehicle_0)
+        # Atualizar estatísticas do journey vehicle (vehicle_0)
         if len(self.vehicle_agents) > 0:
             journey_vehicle = self.vehicle_agents[0]
             self.stats['journey_speed'] = journey_vehicle.speed
-            # Calcular peso total da rota
-            if hasattr(journey_vehicle, 'route') and journey_vehicle.route:
-                total_weight = 0
-                for i in range(len(journey_vehicle.route) - 1):
-                    edge_id = f"{journey_vehicle.route[i]}_{journey_vehicle.route[i+1]}"
-                    if edge_id in self.edges:
-                        total_weight += self.edges[edge_id]['weight']
-                self.stats['journey_total_weight'] = total_weight
+            
+            # Debug: mostrar status do veículo a cada 60 frames
+            if self.stats['step'] % 60 == 0:
+                print(f"📊 Journey Status: moving={journey_vehicle.moving}, route_index={journey_vehicle.route_index}, route_len={len(journey_vehicle.route) if journey_vehicle.route else 0}")
+            
+            # Iniciar cronômetro quando o veículo começa a se mover
+            if self.stats['journey_start_time'] is None and journey_vehicle.moving:
+                self.stats['journey_start_time'] = time.time()
+                self.stats['journey_last_position'] = (journey_vehicle.x, journey_vehicle.y)
+                print(f"⏱️  Cronômetro iniciado para Journey vehicle!")
+            
+            # Calcular tempo de viagem
+            if self.stats['journey_start_time'] is not None and journey_vehicle.arrival_time is None:
+                self.stats['journey_travel_time'] = time.time() - self.stats['journey_start_time']
+            
+            self.last_update_time = time.time()
+            
+            # Atualizar custo da rota do journey vehicle (peso das arestas)
+            if hasattr(journey_vehicle, 'route_total_cost'):
+                self.stats['journey_total_cost'] = journey_vehicle.route_total_cost
+            if hasattr(journey_vehicle, 'route_cost_traveled'):
+                self.stats['journey_cost_traveled'] = journey_vehicle.route_cost_traveled
+    
+    def draw_vehicle_icon(self, vehicle_type, size=16):
+        """Desenha ícone de veículo como superfície"""
+        surface = pygame.Surface((size, size), pygame.SRCALPHA)
+        
+        if vehicle_type == 'ambulance':
+            # Ambulância: retângulo vermelho com cruz branca
+            pygame.draw.rect(surface, (220, 38, 38), (0, 0, size, size))
+            pygame.draw.rect(surface, (255, 255, 255), (size//2-2, 3, 4, size-6))  # Vertical
+            pygame.draw.rect(surface, (255, 255, 255), (3, size//2-2, size-6, 4))  # Horizontal
+            pygame.draw.rect(surface, (255, 255, 255), (0, 0, size, size), 2)  # Borda
+        elif vehicle_type == 'journey':
+            # Journey: retângulo roxo com "A→B"
+            pygame.draw.rect(surface, (147, 51, 234), (0, 0, size, size))
+            text = self.font_label.render("A", True, (255, 255, 255))
+            surface.blit(text, (2, size//2 - 6))
+            pygame.draw.rect(surface, (255, 255, 255), (0, 0, size, size), 2)
+        else:
+            # Carro normal: retângulo azul
+            pygame.draw.rect(surface, (59, 130, 246), (0, 0, size, size))
+            pygame.draw.rect(surface, (255, 255, 255), (0, 0, size, size), 2)
+        
+        # Seta indicando frente
+        arrow_points = [
+            (size - 2, size // 2),
+            (size - 5, size // 2 - 2),
+            (size - 5, size // 2 + 2)
+        ]
+        pygame.draw.polygon(surface, (255, 255, 255), arrow_points)
+        
+        return surface
     
     def draw(self):
         """Desenha a simulacao com ruas UNIFORMES de 2 faixas bem visíveis"""
@@ -694,14 +734,6 @@ class SPADETrafficSimulation:
             if v_agent.x > 0 and v_agent.y > 0:
                 pos = self.world_to_screen(v_agent.x, v_agent.y)
                 
-                # Cor baseada no tipo
-                if v_agent.vehicle_type == 'ambulance':
-                    color = COLOR_VEHICLE_AMBULANCE
-                elif v_agent.vehicle_type == 'journey':
-                    color = COLOR_VEHICLE_JOURNEY
-                else:
-                    color = COLOR_VEHICLE_NORMAL
-                
                 # Calcular direção do veículo (baseado na rota)
                 angle = 0
                 if v_agent.route and len(v_agent.route) > v_agent.route_index + 1:
@@ -713,24 +745,11 @@ class SPADETrafficSimulation:
                         dy = next_node['y'] - v_agent.y
                         angle = math.degrees(math.atan2(dy, dx))
                 
-                # Criar superfície para o quadrado do veículo
-                car_size = 14  # Tamanho do quadrado
-                car_surface = pygame.Surface((car_size, car_size), pygame.SRCALPHA)
+                # Desenhar ícone do veículo
+                vehicle_icon = self.draw_vehicle_icon(v_agent.vehicle_type, size=16)
                 
-                # Desenhar quadrado preenchido
-                pygame.draw.rect(car_surface, color, (0, 0, car_size, car_size))
-                pygame.draw.rect(car_surface, COLOR_TEXT, (0, 0, car_size, car_size), 2)
-                
-                # Desenhar seta indicando frente do veículo (triângulo pequeno)
-                arrow_points = [
-                    (car_size - 2, car_size // 2),  # Ponta da seta
-                    (car_size - 6, car_size // 2 - 3),  # Topo
-                    (car_size - 6, car_size // 2 + 3)   # Base
-                ]
-                pygame.draw.polygon(car_surface, (255, 255, 255), arrow_points)
-                
-                # Rotacionar o quadrado baseado na direção
-                rotated_surface = pygame.transform.rotate(car_surface, -angle)
+                # Rotacionar o ícone baseado na direção
+                rotated_surface = pygame.transform.rotate(vehicle_icon, -angle)
                 rotated_rect = rotated_surface.get_rect(center=pos)
                 
                 # Desenhar veículo rotacionado
@@ -839,20 +858,30 @@ class SPADETrafficSimulation:
         
         stats_lines = [
             f"Step: {self.stats['step']}",
-            f"Veiculos: {self.stats['active_vehicles']}/{self.stats['total_vehicles']}",
-            f"Completos: {self.stats['completed_trips']}",
-            f"Tempo Medio: {self.stats['avg_trip_time']} steps",
+            f"Total Veiculos: {self.stats['total_vehicles']}",
             f"",
             f"Veiculo Journey A->B:",
             f"  Velocidade: {self.stats['journey_speed']:.1f} px/s",
-            f"  Peso Total: {self.stats['journey_total_weight']:.1f}",
+        ]
+        
+        # Adicionar informações de tempo e distância
+        travel_time = self.stats['journey_travel_time']
+        cost_traveled = self.stats['journey_cost_traveled']
+        
+        # Formatar tempo de viagem (mm:ss)
+        travel_mins = int(travel_time // 60)
+        travel_secs = int(travel_time % 60)
+        
+        stats_lines.extend([
+            f"  Tempo Total: {travel_mins:02d}:{travel_secs:02d}",
+            f"  Distancia: {cost_traveled:.0f}",
             f"",
             f"Agentes SPADE:",
             f"  Coordenador: 1",
             f"  Veiculos: {len(self.vehicle_agents)}",
             f"  Semaforos: {len(self.traffic_light_agents)}",
             f"  TOTAL: {1 + len(self.vehicle_agents) + len(self.traffic_light_agents)}"
-        ]
+        ])
         
         for line in stats_lines:
             text = self.font_label.render(line, True, COLOR_TEXT)
@@ -897,20 +926,23 @@ class SPADETrafficSimulation:
         self.screen.blit(legend_title, (sidebar_x + 20, y_offset))
         y_offset += 30
         
-        # Veiculos
-        pygame.draw.circle(self.screen, COLOR_VEHICLE_JOURNEY, (sidebar_x + 30, y_offset + 5), 5)
+        # Veiculos com ícones customizados
+        icon_journey = self.draw_vehicle_icon('journey', size=16)
+        self.screen.blit(icon_journey, (sidebar_x + 25, y_offset - 4))
         text = self.font_label.render("Veiculo Journey (A->B)", True, COLOR_TEXT)
-        self.screen.blit(text, (sidebar_x + 45, y_offset))
-        y_offset += 20
+        self.screen.blit(text, (sidebar_x + 50, y_offset))
+        y_offset += 25
         
-        pygame.draw.circle(self.screen, COLOR_VEHICLE_AMBULANCE, (sidebar_x + 30, y_offset + 5), 5)
+        icon_amb = self.draw_vehicle_icon('ambulance', size=16)
+        self.screen.blit(icon_amb, (sidebar_x + 25, y_offset - 4))
         text = self.font_label.render("Ambulancia", True, COLOR_TEXT)
-        self.screen.blit(text, (sidebar_x + 45, y_offset))
-        y_offset += 20
+        self.screen.blit(text, (sidebar_x + 50, y_offset))
+        y_offset += 25
         
-        pygame.draw.circle(self.screen, COLOR_VEHICLE_NORMAL, (sidebar_x + 30, y_offset + 5), 5)
+        icon_car = self.draw_vehicle_icon('normal', size=16)
+        self.screen.blit(icon_car, (sidebar_x + 25, y_offset - 4))
         text = self.font_label.render("Carro Normal", True, COLOR_TEXT)
-        self.screen.blit(text, (sidebar_x + 45, y_offset))
+        self.screen.blit(text, (sidebar_x + 50, y_offset))
         y_offset += 25
         
         # Semaforos

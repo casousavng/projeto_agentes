@@ -11,6 +11,8 @@ import asyncio
 import json
 import math
 import heapq
+import random
+import time
 from typing import Dict, List, Tuple, Optional
 from spade.agent import Agent
 from spade.behaviour import CyclicBehaviour, OneShotBehaviour, PeriodicBehaviour
@@ -51,12 +53,19 @@ class VehicleAgent(Agent):
         self.moving = True
         self.arrival_time = None
         
+        # Rastreamento de custo da rota (peso das arestas)
+        self.route_total_cost = 0  # Custo total da rota planejada
+        self.route_cost_traveled = 0  # Custo acumulado das arestas percorridas
+        self.current_edge_cost = 0  # Custo da aresta atual
+        self.edge_start_node = None  # Nó inicial da aresta atual
+        
         # Dados da rede (serão recebidos do coordenador)
         self.nodes = {}
         self.edges = {}
         self.graph = {}
         self.traffic_reports = {}  # Cache local de reportes de trafego
         self.traffic_lights = {}   # Cache local de semaforos
+        self.nearby_ambulances = {}  # Cache de ambulâncias próximas {ambulance_id: {'x': x, 'y': y, 'timestamp': time}}
         
     async def setup(self):
         """Configuracao inicial do agente"""
@@ -73,6 +82,11 @@ class VehicleAgent(Agent):
         # Behaviour para reportar trafego (menos frequente para economizar)
         report_behaviour = self.ReportTrafficBehaviour(period=3.0)  # Aumentado de 2.0 para 3.0
         self.add_behaviour(report_behaviour)
+        
+        # 🚑 AMBULÂNCIAS: Behaviour para broadcast de posição (prioridade)
+        if self.vehicle_type == 'ambulance':
+            ambulance_broadcast = self.AmbulanceBroadcastBehaviour(period=0.2)  # 5 vezes por segundo
+            self.add_behaviour(ambulance_broadcast)
         
         # Behaviour para solicitar dados da rede (executar uma vez)
         request_behaviour = self.RequestNetworkBehaviour()
@@ -123,7 +137,15 @@ class VehicleAgent(Agent):
                     path.append(current)
                     current = came_from[current]
                 path.append(start)
-                return path[::-1]
+                path = path[::-1]
+                
+                # Calcular custo total da rota (soma dos pesos das arestas)
+                if len(path) > 0:
+                    self.route_total_cost = g_score[goal]
+                    self.route_cost_traveled = 0
+                    self.edge_start_node = start
+                
+                return path
             
             for neighbor, edge_id in self.graph.get(current, []):
                 # Peso base da aresta
@@ -183,12 +205,35 @@ class VehicleAgent(Agent):
                 distance = math.sqrt(dx**2 + dy**2)
                 
                 if distance > 2:
-                    # SISTEMA DE RESPEITO AOS SEMÁFOROS
+                    # SISTEMA DE RESPEITO AOS SEMÁFOROS E PRIORIDADE DE AMBULÂNCIAS
                     should_stop = False
                     stop_reason = ""
                     
-                    # 🚑 AMBULÂNCIAS IGNORAM SEMÁFOROS (modo urgência)
+                    # 🚑 PRIORIDADE ABSOLUTA: Verificar se há ambulâncias próximas
                     if self.agent.vehicle_type != 'ambulance':
+                        # Limpar ambulâncias antigas (mais de 1 segundo)
+                        current_time = time.time()
+                        self.agent.nearby_ambulances = {
+                            amb_id: data for amb_id, data in self.agent.nearby_ambulances.items()
+                            if current_time - data['timestamp'] < 1.0
+                        }
+                        
+                        # Verificar se há ambulância próxima (raio de 150px)
+                        for amb_id, amb_data in self.agent.nearby_ambulances.items():
+                            amb_x = amb_data['x']
+                            amb_y = amb_data['y']
+                            dist_to_ambulance = math.sqrt((amb_x - self.agent.x)**2 + (amb_y - self.agent.y)**2)
+                            
+                            if dist_to_ambulance < 150:
+                                # Ambulância próxima! CEDER PASSAGEM
+                                should_stop = True
+                                stop_reason = f"AMBULANCIA_{amb_id}"
+                                if self.agent.waiting_time % 30 == 1:
+                                    print(f"🚑 {self.agent.vehicle_id} CEDENDO PASSAGEM para {amb_id} (dist={dist_to_ambulance:.0f}px)")
+                                break
+                    
+                    # 🚦 AMBULÂNCIAS IGNORAM SEMÁFOROS (modo urgência)
+                    if not should_stop and self.agent.vehicle_type != 'ambulance':
                         # DETERMINAR DIREÇÃO DO MOVIMENTO (horizontal ou vertical)
                         # Se dx > dy, movimento é predominantemente HORIZONTAL (leste-oeste)
                         # Se dy > dx, movimento é predominantemente VERTICAL (norte-sul)
@@ -255,26 +300,55 @@ class VehicleAgent(Agent):
                         self.agent.y += (dy / distance) * speed_factor
                 else:
                     # Chegou ao no
+                    prev_node = self.agent.current_node
                     self.agent.current_node = target_node
                     self.agent.x = target_x
                     self.agent.y = target_y
                     self.agent.route_index += 1
                     
+                    # Acumular custo da aresta percorrida (para journey vehicle)
+                    if self.agent.vehicle_id == 'v0' and prev_node and self.agent.edge_start_node:
+                        # Encontrar a aresta entre edge_start_node e current_node
+                        for neighbor, edge_id in self.agent.graph.get(self.agent.edge_start_node, []):
+                            if neighbor == target_node:
+                                edge_data = self.agent.edges.get(edge_id, {})
+                                edge_weight = edge_data.get('weight', 100.0)
+                                self.agent.route_cost_traveled += edge_weight
+                                break
+                        # Atualizar para próxima aresta
+                        self.agent.edge_start_node = target_node
+                    
                     if self.agent.route_index >= len(self.agent.route):
                         # Chegou ao destino
-                        self.agent.arrival_time = self.agent.total_travel_time
-                        self.agent.moving = False
                         
-                        # Notificar coordenador
-                        msg = Message(to="coordinator@localhost")
-                        msg.set_metadata("performative", "inform")
-                        msg.body = json.dumps({
-                            "type": "arrival",
-                            "vehicle_id": self.agent.vehicle_id,
-                            "travel_time": self.agent.total_travel_time,
-                            "waiting_time": self.agent.waiting_time
-                        })
-                        await self.send(msg)
+                        # APENAS o journey vehicle (vehicle_0) para ao chegar
+                        if self.agent.vehicle_id == 'v0':
+                            self.agent.arrival_time = self.agent.total_travel_time
+                            self.agent.moving = False
+                            
+                            # Notificar coordenador
+                            msg = Message(to="coordinator@localhost")
+                            msg.set_metadata("performative", "inform")
+                            msg.body = json.dumps({
+                                "type": "arrival",
+                                "vehicle_id": self.agent.vehicle_id,
+                                "travel_time": self.agent.total_travel_time,
+                                "waiting_time": self.agent.waiting_time
+                            })
+                            await self.send(msg)
+                        else:
+                            # Veículos normais: escolher NOVO DESTINO aleatório e continuar
+                            nodes_list = list(self.agent.nodes.keys())
+                            new_destination = random.choice([n for n in nodes_list if n != self.agent.current_node])
+                            
+                            # Recalcular rota para novo destino
+                            self.agent.end_node = new_destination
+                            self.agent.route = self.agent.calculate_route_astar(self.agent.current_node, new_destination)
+                            
+                            if self.agent.route:
+                                self.agent.route_index = 0
+                                self.agent.target_node = self.agent.route[0]
+                                # print(f"🔄 {self.agent.vehicle_id} escolheu novo destino: {new_destination}")
                     else:
                         self.agent.target_node = self.agent.route[self.agent.route_index]
             
@@ -293,7 +367,14 @@ class VehicleAgent(Agent):
                     if msg_type == 'network_data':
                         # Receber dados da rede
                         self.agent.nodes = data.get('nodes', {})
-                        self.agent.edges = data.get('edges', {})
+                        edges_received = data.get('edges', {})
+                        # Converter chaves de string para int se necessário
+                        self.agent.edges = {}
+                        for key, value in edges_received.items():
+                            try:
+                                self.agent.edges[int(key)] = value
+                            except (ValueError, TypeError):
+                                self.agent.edges[key] = value
                         self.agent.graph = data.get('graph', {})
                         
                         # Inicializar posicao
@@ -343,6 +424,18 @@ class VehicleAgent(Agent):
                     elif msg_type == 'recalculate_route':
                         # Forcar recalculo de rota
                         self.agent.route = []
+                    
+                    elif msg_type == 'ambulance_position':
+                        # 🚑 RECEBER POSIÇÃO DE AMBULÂNCIA (PRIORIDADE!)
+                        ambulance_id = data.get('ambulance_id')
+                        if ambulance_id:
+                            self.agent.nearby_ambulances[ambulance_id] = {
+                                'x': data.get('x', 0),
+                                'y': data.get('y', 0),
+                                'current_node': data.get('current_node'),
+                                'speed': data.get('speed', 0),
+                                'timestamp': time.time()
+                            }
                         
                 except json.JSONDecodeError:
                     pass
@@ -375,6 +468,41 @@ class VehicleAgent(Agent):
                     "speed": self.agent.speed
                 })
                 await self.send(msg)
+    
+    class AmbulanceBroadcastBehaviour(PeriodicBehaviour):
+        """Behaviour para ambulâncias enviarem broadcast de posição (PRIORIDADE)"""
+        
+        async def run(self):
+            """Envia broadcast de posição para todos os veículos"""
+            # Broadcast para todos os 11 carros normais (vehicle_0 a vehicle_10)
+            for i in range(11):
+                msg = Message(to=f"vehicle_{i}@localhost")
+                msg.set_metadata("performative", "inform")
+                msg.body = json.dumps({
+                    "type": "ambulance_position",
+                    "ambulance_id": self.agent.vehicle_id,
+                    "x": self.agent.x,
+                    "y": self.agent.y,
+                    "current_node": self.agent.current_node,
+                    "speed": self.agent.speed
+                })
+                await self.send(msg)
+            
+            # Broadcast para as outras ambulâncias também (AMB0-AMB3)
+            for i in range(4):
+                amb_jid = f"amb_{i}@localhost"
+                if amb_jid != str(self.agent.jid):  # Não enviar para si mesmo
+                    msg = Message(to=amb_jid)
+                    msg.set_metadata("performative", "inform")
+                    msg.body = json.dumps({
+                        "type": "ambulance_position",
+                        "ambulance_id": self.agent.vehicle_id,
+                        "x": self.agent.x,
+                        "y": self.agent.y,
+                        "current_node": self.agent.current_node,
+                        "speed": self.agent.speed
+                    })
+                    await self.send(msg)
 
 
 class TrafficLightAgent(Agent):
