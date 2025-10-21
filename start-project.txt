@@ -1,0 +1,11 @@
+# 1. Ativar ambiente
+source venv/bin/activate
+
+# 2. Configurar Prosody
+./scripts/setup_prosody.sh
+
+# 3. Registrar agentes
+./scripts/register_10_paired_lights.sh
+
+# 4. Executar simulação
+python live_dynamic_spade.py
