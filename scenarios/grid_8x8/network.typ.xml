@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<types xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/types_file.xsd">
-    <type id="highway" priority="3" numLanes="2" speed="22.22"/>      <!-- 80 km/h, 2 faixas -->
-    <type id="arterial" priority="2" numLanes="2" speed="16.67"/>     <!-- 60 km/h, 2 faixas -->
-    <type id="collector" priority="1" numLanes="1" speed="13.89"/>    <!-- 50 km/h, 1 faixa -->
-    <type id="local" priority="0" numLanes="1" speed="8.33"/>         <!-- 30 km/h, 1 faixa -->
-</types>

@@ -1,16 +1,10 @@
 """
-Módulo de agentes
+Módulo de agentes SPADE para simulação de tráfego
 """
-from .base_agent import BaseTrafficAgent
-from .traffic_light import TrafficLightAgent
-from .car import CarAgent
-from .ambulance import AmbulanceAgent
-from .pedestrian import PedestrianAgent
+from .spade_traffic_agents import VehicleAgent, TrafficLightAgent, CoordinatorAgent
 
 __all__ = [
-    'BaseTrafficAgent',
+    'VehicleAgent',
     'TrafficLightAgent',
-    'CarAgent',
-    'AmbulanceAgent',
-    'PedestrianAgent'
+    'CoordinatorAgent'
 ]
