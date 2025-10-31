@@ -1,456 +1,1257 @@
-# 🚦 Simulação de Tráfego Multiagente com SPADE# 🚦 Simulação de Tráfego Multiagente# 🚦 Simulação de Tráfego Multiagente
+# 🚦 Simulação de Tráfego Multiagente com SPADE# 🚦 Simulação de Tráfego Multiagente com SPADE# 🚦 Simulação de Tráfego Multiagente com SPADE# 🚦 Simulação de Tráfego Multiagente# 🚦 Simulação de Tráfego Multiagente
 
 
 
-![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)
-
-![SPADE](https://img.shields.io/badge/SPADE-4.1.0-green.svg)
-
-![Pygame](https://img.shields.io/badge/Pygame-2.6.1-orange.svg)Sistema de simulação de tráfego urbano usando agentes inteligentes com **SPADE**, **SUMO** e visualização em **Pygame**.Sistema de simulação de tráfego urbano usando agentes inteligentes com **SPADE**, **SUMO** e **Prosody XMPP**.
+Sistema de simulação de tráfego urbano usando agentes inteligentes baseados em XMPP (SPADE framework) com visualização em tempo real via Pygame.
 
 
 
-Sistema de simulação de tráfego urbano usando agentes inteligentes com **SPADE**, **Prosody XMPP** e visualização em **Pygame**.
+![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)Sistema de simulação de tráfego urbano usando agentes inteligentes baseados em XMPP (SPADE framework) com visualização em tempo real via Pygame.
+
+![SPADE](https://img.shields.io/badge/SPADE-3.3.2-green.svg)
+
+![Pygame](https://img.shields.io/badge/Pygame-2.6.1-orange.svg)
 
 
 
----![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)## 📋 Visão Geral
+---![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)
 
 
 
-## 📋 Visão Geral![SPADE](https://img.shields.io/badge/SPADE-4.1.0-green.svg)
+## 📋 Índice![SPADE](https://img.shields.io/badge/SPADE-3.3.2-green.svg)
 
+- [Visão Geral](#-visão-geral)
 
+- [Tecnologias](#️-tecnologias)![Pygame](https://img.shields.io/badge/Pygame-2.6.1-orange.svg)![SPADE](https://img.shields.io/badge/SPADE-4.1.0-green.svg)
 
-Este projeto implementa uma simulação de tráfego onde diferentes tipos de agentes (semáforos, carros e ambulâncias) interagem em um ambiente urbano virtual. Os agentes se comunicam via protocolo XMPP e coordenam suas ações para otimizar o fluxo de tráfego.![Pygame](https://img.shields.io/badge/Pygame-2.6.1-orange.svg)Este projeto implementa uma simulação de tráfego onde diferentes tipos de agentes (semáforos, carros, ambulâncias e pedestres) interagem em um ambiente urbano virtual. Os agentes se comunicam via protocolo XMPP e coordenam suas ações para otimizar o fluxo de tráfego.
+- [Arquitetura](#️-arquitetura)
 
+- [Instalação](#-instalação)
 
+- [Uso](#-uso)
 
-### 🎯 Características Principais
+- [Agentes](#-agentes)---![Pygame](https://img.shields.io/badge/Pygame-2.6.1-orange.svg)Sistema de simulação de tráfego urbano usando agentes inteligentes com **SPADE**, **SUMO** e visualização em **Pygame**.Sistema de simulação de tráfego urbano usando agentes inteligentes com **SPADE**, **SUMO** e **Prosody XMPP**.
 
+- [Funcionalidades](#️-funcionalidades)
 
+- [Estrutura do Projeto](#-estrutura-do-projeto)
 
-✅ **36 agentes SPADE** comunicando via XMPP  ---### 🎯 Objetivos
+- [Troubleshooting](#-troubleshooting)
 
-✅ **20 semáforos coordenados** (10 intersecções × 2 orientações)  
-
-✅ **Grid 6×6** com 36 nós e 120 arestas  
-
-✅ **11 veículos + 4 ambulâncias** com roteamento inteligente  
-
-✅ **Visualização Pygame** em tempo real  ## 📋 Visão Geral- **Carros**: Encontrar rotas ótimas entre pontos A e B
-
-✅ **Ambulâncias com prioridade** (ignoram semáforos)  
-
-✅ **Teleportação nas bordas** (circulação livre)  - **Ambulâncias**: Prioridade em modo urgência
-
-
-
----Este projeto implementa uma simulação completa de tráfego urbano onde:- **Semáforos**: Controle adaptativo de intersecções
-
-
-
-## 🏗️ Arquitetura- **Pedestres**: Travessia segura de ruas
-
-
-
-```- 🤖 **24 agentes de semáforos** controlam intersecções de forma inteligente
-
-┌─────────────────────────────────────┐
-
-│    Visualização Pygame              │- 🚗 **Veículos autônomos** navegam respeitando sinais e buscando rotas ótimas## 🛠️ Tecnologias
-
-│    (live_dynamic_spade.py)          │
-
-└─────────────────────────────────────┘- 💬 **Comunicação XMPP** permite coordenação entre agentes
-
-              ↑ renderiza
-
-┌─────────────────────────────────────┐- 🎮 **Visualização Pygame** renderiza a simulação em tempo real- **Python 3.9+**: Linguagem principal
-
-│    Agentes SPADE                    │
-
-│    (spade_traffic_agents.py)        │- 💾 **Dados persistidos** em SQLite para análise posterior- **SPADE**: Framework de agentes multiagente baseado em XMPP
-
-│    • 1 CoordinatorAgent             │
-
-│    • 20 TrafficLightAgents (H+V)    │- **Prosody**: Servidor XMPP em Docker
-
-│    • 11 VehicleAgents               │
-
-│    • 4 AmbulanceAgents              │### 🎯 Características Principais- **SUMO**: Simulador de tráfego urbano
-
-└─────────────────────────────────────┘
-
-              ↑ comunica via XMPP- **TraCI**: Interface Python para controlar SUMO
-
-┌─────────────────────────────────────┐
-
-│    Prosody XMPP Server              │✅ Arquitetura multiagente com SPADE  - **X11**: Interface gráfica (macOS M1)
-
-│    (Docker container)               │
-
-└─────────────────────────────────────┘✅ Rede urbana 8x8 (64 nós, 112 arestas)  
-
-```
-
-✅ Semáforos inteligentes com lógica adaptativa  ## 📁 Estrutura do Projeto
+## 📋 Índice
 
 ---
 
-✅ Coleta automática de dados  
+- [Visão Geral](#-visão-geral)
 
-## 📁 Estrutura do Projeto
+## 🎯 Visão Geral
 
-✅ Visualização interativa com controles  ```
+- [Tecnologias](#️-tecnologias)Sistema de simulação de tráfego urbano usando agentes inteligentes com **SPADE**, **Prosody XMPP** e visualização em **Pygame**.
 
-```
+Este projeto implementa uma simulação completa de tráfego urbano onde:
 
-projeto_agentes/✅ Replay de simulações sem re-executar  projeto_agentes/
+- **36 agentes SPADE** comunicam via protocolo XMPP (Prosody server)- [Arquitetura](#️-arquitetura)
 
-│
+- **1 veículo Journey** (A→B) otimiza sua rota usando algoritmo A*
 
-├── 🎮 live_dynamic_spade.py        # Simulação principal├── agents/                 # Agentes SPADE
+- **10 carros normais** circulam continuamente pela rede- [Instalação](#-instalação)
 
-│
+- **4 ambulâncias** têm prioridade absoluta no trânsito
 
-├── 🤖 agents/---│   ├── base_agent.py      # Classe base para todos os agentes
+- **20 semáforos coordenados** (10 pares horizontal + vertical)- [Uso](#-uso)
 
-│   ├── __init__.py
+- **1 coordenador** gerencia o sistema
 
-│   └── spade_traffic_agents.py    # Todos os agentes SPADE│   ├── traffic_light.py   # Agente semáforo
+- [Agentes](#-agentes)---![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)## 📋 Visão Geral
 
-│
+### Características Principais
 
-├── 🛠️ scripts/## 🏗️ Arquitetura│   ├── car.py             # Agente carro
+✅ Comunicação real via XMPP (Prosody server no Docker)  - [Funcionalidades](#️-funcionalidades)
 
-│   ├── setup_prosody.sh           # Configurar Prosody
+✅ Pathfinding inteligente com A* considerando:
 
-│   └── register_10_paired_lights.sh # Registrar 20 semáforos│   ├── ambulance.py       # Agente ambulância
+  - Pesos das arestas (distância das vias: 80-150)- [Estrutura do Projeto](#-estrutura-do-projeto)
 
-│
+  - Estado dos semáforos (vermelho +200, amarelo +50)
 
-├── 📖 README.md                   # Esta documentação```│   └── pedestrian.py      # Agente pedestre
+  - Congestionamento reportado por outros veículos  - [Troubleshooting](#-troubleshooting)
 
-├── 📚 DOCUMENTATION.md            # Documentação completa consolidada
+✅ Prioridade de ambulâncias (raio de 150px)  
 
-├── 📋 requirements.txt            # Dependências Python┌─────────────────────────────────────┐├── config/                 # Configurações
+✅ Semáforos coordenados em pares (horizontal + vertical alternam)  ## 📋 Visão Geral![SPADE](https://img.shields.io/badge/SPADE-4.1.0-green.svg)
 
-├── 🔐 .env.example                # Template de variáveis
+✅ Visualização em tempo real com Pygame (1100×700px)  
 
-└── 🗂️ venv/                       # Ambiente virtual│    Visualização Pygame              │  ← Você está aqui!│   └── simulation_config.py
+✅ Estatísticas dinâmicas (velocidade, tempo, distância percorrida)  ---
 
-```
 
-│    (visualize_pygame.py)            │├── scenarios/              # Cenários SUMO
 
 ---
 
-└─────────────────────────────────────┘│   └── simple_grid/       # Grid 3x3 com semáforos
 
-## 🚀 Instalação Rápida
 
-              ↑ lê│       ├── network.net.xml
-
-### 1️⃣ Pré-requisitos
-
-┌─────────────────────────────────────┐│       ├── routes.rou.xml
-
-- **Python 3.9+**
-
-- **Docker Desktop** (para Prosody XMPP)│    SQLite Database                  ││       └── simulation.sumocfg
+## 🛠️ Tecnologias## 🎯 Visão Geral
 
 
 
-```bash│    (simulation_data.db)             │  ← 167 snapshots prontos├── scripts/                # Scripts auxiliares
+### CoreEste projeto implementa uma simulação de tráfego onde diferentes tipos de agentes (semáforos, carros e ambulâncias) interagem em um ambiente urbano virtual. Os agentes se comunicam via protocolo XMPP e coordenam suas ações para otimizar o fluxo de tráfego.![Pygame](https://img.shields.io/badge/Pygame-2.6.1-orange.svg)Este projeto implementa uma simulação de tráfego onde diferentes tipos de agentes (semáforos, carros, ambulâncias e pedestres) interagem em um ambiente urbano virtual. Os agentes se comunicam via protocolo XMPP e coordenam suas ações para otimizar o fluxo de tráfego.
 
-# Verificar versões
+- **Python 3.9+** - Linguagem principal
 
-python3 --version└─────────────────────────────────────┘│   ├── setup_prosody.sh   # Configurar Prosody
+- **SPADE 3.3.2** - Framework de agentes baseado em XMPPEste projeto implementa uma simulação completa de tráfego urbano onde:
 
-docker --version
+- **Pygame 2.6.1** - Interface gráfica e visualização
 
-```              ↑ grava│   ├── setup_venv.sh      # Configurar ambiente Python
-
-
-
-### 2️⃣ Clonar e Configurar┌─────────────────────────────────────┐│   ├── run_simulation.sh  # Executar simulação
+- **Prosody XMPP** - Servidor de mensagens (via Docker)- **36 agentes SPADE** comunicam via protocolo XMPP (Prosody server)
 
 
 
-```bash│    Simulação SPADE + SUMO           ││   └── cleanup.sh         # Limpar recursos
+### Bibliotecas- **1 veículo Journey** (A→B) otimiza sua rota usando algoritmo A*
 
-# Clone o repositório
+- `asyncio` - Execução assíncrona dos agentes
 
-git clone <repo-url>│    (test_journey.py)                │  ← Agentes inteligentes├── utils/                  # Utilitários
+- `heapq` - Implementação eficiente do A*- **10 carros normais** circulam continuamente pela rede### 🎯 Características Principais
+
+- `json` - Serialização de mensagens XMPP
+
+- `math` - Cálculos geométricos e distâncias- **4 ambulâncias** têm prioridade absoluta no trânsito
+
+
+
+---- **20 semáforos coordenados** (10 pares horizontal + vertical)
+
+
+
+## 🏗️ Arquitetura- **1 coordenador** gerencia o sistema
+
+
+
+```✅ **36 agentes SPADE** comunicando via XMPP  ---### 🎯 Objetivos
+
+┌─────────────────────────────────────────────────────┐
+
+│           PROSODY XMPP SERVER (Docker)              │### Características Principais
+
+│              localhost:5222                         │
+
+└──────────────────┬──────────────────────────────────┘✅ Comunicação real via XMPP (Prosody server no Docker)  ✅ **20 semáforos coordenados** (10 intersecções × 2 orientações)  
+
+                   │ XMPP Protocol
+
+     ┌─────────────┼─────────────┐✅ Pathfinding inteligente com A* considerando:
+
+     │             │             │
+
+┌────▼─────┐ ┌────▼─────┐ ┌────▼──────┐  - Pesos das arestas (distância das vias: 80-150)✅ **Grid 6×6** com 36 nós e 120 arestas  
+
+│Coordinator│ │ Vehicles │ │  Traffic  │
+
+│  (1x)     │ │  (15x)   │ │ Lights(20)│  - Estado dos semáforos (vermelho +200, amarelo +50)
+
+└───────────┘ └──────────┘ └───────────┘
+
+     │             │             │  - Congestionamento reportado por outros veículos  ✅ **11 veículos + 4 ambulâncias** com roteamento inteligente  
+
+     └─────────────┼─────────────┘
+
+                   │✅ Prioridade de ambulâncias (raio de 150px)  
+
+          ┌────────▼─────────┐
+
+          │  PYGAME RENDER   │✅ Semáforos coordenados em pares (horizontal + vertical alternam)  ✅ **Visualização Pygame** em tempo real  ## 📋 Visão Geral- **Carros**: Encontrar rotas ótimas entre pontos A e B
+
+          │  30 FPS Loop     │
+
+          │  1100×700px      │✅ Visualização em tempo real com Pygame (1100×700px)  
+
+          └──────────────────┘
+
+```✅ Estatísticas dinâmicas (velocidade, tempo, distância percorrida)  ✅ **Ambulâncias com prioridade** (ignoram semáforos)  
+
+
+
+### Fluxo de Dados
+
+1. **Agentes SPADE** trocam mensagens JSON via Prosody XMPP
+
+2. **Pygame** consulta estados dos agentes a cada frame (30 FPS)---✅ **Teleportação nas bordas** (circulação livre)  - **Ambulâncias**: Prioridade em modo urgência
+
+3. **Semáforos** fazem broadcast de estados a cada 0.5s
+
+4. **Ambulâncias** fazem broadcast de posições a cada 0.2s (5 Hz)
+
+5. **Veículos** reportam congestionamento ao chegarem em arestas
+
+## 🛠️ Tecnologias
+
+---
+
+
+
+## 📦 Instalação
+
+### Core---Este projeto implementa uma simulação completa de tráfego urbano onde:- **Semáforos**: Controle adaptativo de intersecções
+
+### Pré-requisitos
+
+- **Python 3.9+** instalado- **Python 3.9+** - Linguagem principal
+
+- **Docker** instalado e rodando
+
+- **macOS/Linux** (testado em macOS M1 13")- **SPADE 3.3.2** - Framework de agentes baseado em XMPP
+
+
+
+### Passo 1: Clonar o repositório- **Pygame 2.6.1** - Interface gráfica e visualização
+
+```bash
+
+git clone <repo-url>- **Prosody XMPP** - Servidor de mensagens (via Docker)## 🏗️ Arquitetura- **Pedestres**: Travessia segura de ruas
 
 cd projeto_agentes
 
-└─────────────────────────────────────┘│   ├── routing.py         # Otimização de rotas
+```
 
-# Criar e ativar ambiente virtual
 
-python3 -m venv venv              ↑ comunica│   └── xmpp_manager.py    # Gerenciamento de agentes XMPP
+
+### Passo 2: Criar ambiente virtual### Bibliotecas Auxiliares
+
+```bash
+
+python3 -m venv venv- `asyncio` - Execução assíncrona dos agentes
 
 source venv/bin/activate  # macOS/Linux
 
-# venv\Scripts\activate   # Windows┌─────────────────────────────────────┐├── main.py                 # Simulador principal
+```- `heapq` - Implementação eficiente do A*```- 🤖 **24 agentes de semáforos** controlam intersecções de forma inteligente
 
 
 
-# Instalar dependências│    Prosody XMPP Server              │├── requirements.txt        # Dependências Python
+### Passo 3: Instalar dependências- `json` - Serialização de mensagens XMPP
 
-pip install -r requirements.txt
+```bash
 
-```│    (Docker container)               │  ← Mensagens entre agentes├── .env.example           # Template de variáveis de ambiente
-
-
-
-### 3️⃣ Configurar Prosody XMPP└─────────────────────────────────────┘└── README.md              # Esta documentação
-
-
-
-```bash``````
-
-# Tornar script executável
-
-chmod +x scripts/setup_prosody.sh
-
-
-
-# Executar configuração---## 🚀 Instalação (macOS M1)
-
-./scripts/setup_prosody.sh
+pip install -r requirements.txt- `math` - Cálculos geométricos e distâncias┌─────────────────────────────────────┐
 
 ```
 
 
 
-Isso irá:## 🚀 Início Rápido### 1. Pré-requisitos
+### Passo 4: Iniciar Prosody XMPP Server
 
-- ✅ Iniciar container Docker com Prosody
+```bash---│    Visualização Pygame              │- 🚗 **Veículos autônomos** navegam respeitando sinais e buscando rotas ótimas## 🛠️ Tecnologias
 
-- ✅ Configurar servidor XMPP em `localhost:5222`
-
-- ✅ Criar diretórios necessários
-
-### 1️⃣ Pré-requisitos#### Docker Desktop
-
-### 4️⃣ Registrar Agentes XMPP
-
-```bash
-
-```bash
-
-# Tornar script executável```bash# Baixar e instalar Docker Desktop para Mac M1
-
-chmod +x scripts/register_10_paired_lights.sh
-
-# Python 3.9 ou superior# https://www.docker.com/products/docker-desktop
-
-# Registrar 20 semáforos + veículos
-
-./scripts/register_10_paired_lights.shpython --version```
+docker run -d --name prosody -p 5222:5222 prosody/prosody
 
 ```
 
 
+
+### Passo 5: Registrar agentes no Prosody## 🏗️ Arquitetura│    (live_dynamic_spade.py)          │
+
+```bash
+
+chmod +x scripts/register_all_agents.sh
+
+./scripts/register_all_agents.sh
+
+``````└─────────────────────────────────────┘- 💬 **Comunicação XMPP** permite coordenação entre agentes
+
+
+
+---┌─────────────────────────────────────────────────────┐
+
+
+
+## 🚀 Uso│           PROSODY XMPP SERVER (Docker)              │              ↑ renderiza
+
+
+
+### Executar a Simulação│              localhost:5222                         │
+
+```bash
+
+source venv/bin/activate└──────────────────┬──────────────────────────────────┘┌─────────────────────────────────────┐- 🎮 **Visualização Pygame** renderiza a simulação em tempo real- **Python 3.9+**: Linguagem principal
+
+python live_dynamic_spade.py
+
+```                   │ XMPP Protocol
+
+
+
+### Controles     ┌─────────────┼─────────────┐│    Agentes SPADE                    │
+
+| Controle | Ação |
+
+|----------|------|     │             │             │
+
+| **ESC** | Fechar simulação |
+
+| **Mouse Wheel** | Rolar sidebar (quando sobre ela) |┌────▼─────┐ ┌────▼─────┐ ┌────▼──────┐│    (spade_traffic_agents.py)        │- 💾 **Dados persistidos** em SQLite para análise posterior- **SPADE**: Framework de agentes multiagente baseado em XMPP
+
+| **Slider** | Ajustar velocidade global (2.0x a 5.0x) |
+
+| **Botões +/-** | Incrementar/decrementar velocidade |│Coordinator│ │ Vehicles │ │  Traffic  │
+
+
+
+---│  (1x)     │ │  (15x)   │ │ Lights(20)││    • 1 CoordinatorAgent             │
+
+
+
+## 🤖 Agentes└───────────┘ └──────────┘ └───────────┘
+
+
+
+### 1. Coordenador (1 agente)     │             │             ││    • 20 TrafficLightAgents (H+V)    │- **Prosody**: Servidor XMPP em Docker
+
+- **ID**: `coordinator@localhost`
+
+- **Password**: `coord123`     └─────────────┼─────────────┘
+
+- **Função**: Gerencia inicialização e distribui dados da rede
+
+                   ││    • 11 VehicleAgents               │
+
+### 2. Semáforos (20 agentes)
+
+- **IDs**: `tl_{row}_{col}_{h|v}@localhost`          ┌────────▼─────────┐
+
+- **Password**: `tl123`
+
+- **Ciclo**: Verde (15s) → Amarelo (3s) → Vermelho (15s)          │  PYGAME RENDER   ││    • 4 AmbulanceAgents              │### 🎯 Características Principais- **SUMO**: Simulador de tráfego urbano
+
+- **Localização**: 10 cruzamentos (1_1, 1_4, 4_1, 4_4, 2_2, 2_3, 3_2, 3_3, 1_3, 3_1)
+
+          │  30 FPS Loop     │
+
+### 3. Veículo Journey (1 agente)
+
+- **ID**: `vehicle_0@localhost`          │  1100×700px      │└─────────────────────────────────────┘
+
+- **Password**: `veh123`
+
+- **Rota**: 0_0 (A) → 4_4 (B)          └──────────────────┘
+
+- **Ícone**: 🔵 (círculo azul, 12px)
+
+```              ↑ comunica via XMPP- **TraCI**: Interface Python para controlar SUMO
+
+### 4. Carros Normais (10 agentes)
+
+- **IDs**: `vehicle_1` a `vehicle_10@localhost`
+
+- **Password**: `veh123`
+
+- **Comportamento**: Circulação contínua### Fluxo de Dados┌─────────────────────────────────────┐
+
+- **Ícone**: ⚪ (círculo branco, 12px)
+
+1. **Agentes SPADE** trocam mensagens JSON via Prosody XMPP
+
+### 5. Ambulâncias (4 agentes)
+
+- **IDs**: `amb_0` a `amb_3@localhost`2. **Pygame** consulta estados dos agentes a cada frame (30 FPS)│    Prosody XMPP Server              │✅ Arquitetura multiagente com SPADE  - **X11**: Interface gráfica (macOS M1)
+
+- **Password**: `amb123`
+
+- **Prioridade**: 150px de raio3. **Semáforos** fazem broadcast de estados a cada 0.5s
+
+- **Ícone**: 🔴 (círculo vermelho, 12px)
+
+- **Velocidade**: 280 px/s (40% mais rápida)4. **Ambulâncias** fazem broadcast de posições a cada 0.2s (5 Hz)│    (Docker container)               │
+
+
+
+---5. **Veículos** reportam congestionamento ao chegarem em arestas
+
+
+
+## ⚙️ Funcionalidades└─────────────────────────────────────┘✅ Rede urbana 8x8 (64 nós, 112 arestas)  
+
+
+
+### Algoritmo A* Inteligente---
+
+```python
+
+# Cálculo do peso dinâmico da aresta:```
+
+edge_weight = base_weight  # 80-150 (tipo de via)
+
+edge_weight += traffic_delay * 5  # Congestionamento## 📦 Instalação
+
+edge_weight += 200 if semaphore == 'red' else 0
+
+edge_weight += 50 if semaphore == 'yellow' else 0✅ Semáforos inteligentes com lógica adaptativa  ## 📁 Estrutura do Projeto
+
+```
+
+### Pré-requisitos
+
+### Tipos de Vias
+
+- **Python 3.9+** instalado---
+
+| Tipo | Peso Base | Velocidade |
+
+|------|-----------|------------|- **Docker** instalado e rodando
+
+| Highway | 80 | 300 px/s |
+
+| Main | 100 | 250 px/s |- **macOS/Linux** (testado em macOS M1 13")✅ Coleta automática de dados  
+
+| Secondary | 120 | 200 px/s |
+
+| Residential | 150 | 150 px/s |
+
+
+
+### Prioridade de Ambulâncias### Passo 1: Clonar o repositório## 📁 Estrutura do Projeto
+
+- Veículos param automaticamente a 150px de distância
+
+- Broadcast de posição a cada 0.2 segundos```bash
+
+- Cache com timeout de 1 segundo
+
+git clone <repo-url>✅ Visualização interativa com controles  ```
 
 ---
 
-# Docker (para Prosody XMPP)#### SUMO
+cd projeto_agentes
 
-## 🎮 Executar Simulação
-
-docker --version```bash
-
-```bash
-
-# Ativar ambiente virtual# Instalar SUMO via Homebrew
-
-source venv/bin/activate
-
-# SUMO (opcional - apenas para nova simulação)brew tap dlr-ts/sumo
-
-# Executar simulação
-
-python live_dynamic_spade.py# Instalação: https://eclipse.dev/sumo/brew install sumo
-
-```
-
-```
-
-### Controles
-
-# Verificar instalação
-
-| Tecla | Ação |
-
-|-------|------|### 2️⃣ Instalaçãosumo --version
-
-| `ESPAÇO` | Play / Pause |
-
-| `+` / `-` | Ajustar velocidade (2x-5x) |```
-
-| `ESC` / `Q` | Sair |
-
-```bash
-
----
-
-# Clone o repositório#### XQuartz (para GUI do SUMO)
-
-## 🎨 O Que Você Verá
-
-git clone <repo-url>```bash
-
-### Interface Pygame
-
-cd projeto_agentes# Instalar XQuartz
-
-```
-
-┌──────────────┬───────────────────────────────────────────┐brew install --cask xquartz
-
-│              │                                           │
-
-│  🎮 CONTROLE │                                           │# Crie e ative ambiente virtual
-
-│              │        🗺️ Grid 6×6 (1200×1200px)         │
-
-│  FPS: 30     │                                           │python -m venv venv# Após instalação, fazer logout e login novamente
-
-│  Speed: 3.0x │         ━━━━━━━━━━━━━━━━                 │
-
-│              │         ┃  🚗   ┃  🚙                     │source venv/bin/activate  # macOS/Linux# Configurar XQuartz para permitir conexões de rede
-
-│  🚦 Lights   │         ━━━━🔴━━━━━━🟢━━                 │
-
-│  └ 20 agents │              ↓   →                        │# venv\Scripts\activate   # Windows# XQuartz > Preferences > Security > "Allow connections from network clients"
-
-│              │         ━━━━━━━━━━━━━━━━                 │
-
-│  🚗 Vehicles │                                           │```
-
-│  └ 11 cars   │         🚑 (ambulância)                   │
-
-│  └ 4 AMBs    │                                           │# Instale dependências
-
-│              │         ━━━━━━━━━━━━━━━━                 │
-
-│  📍 Journey  │                                           │pip install -r requirements.txt#### Python 3.9+
-
-│  v0: A→B     │                                           │
-
-│  └ 45%       │                                           │``````bash
-
-│              │                                           │
-
-│  🗺️ LEGENDA  │                                           │# Verificar versão
-
-│              │                                           │
-
-│  🚗 Viagem   │                                           │### 3️⃣ Executar Visualização (Pygame)python3 --version
-
-│  🚙 Carro    │                                           │
-
-│  🚑 AMB      │                                           │
-
-│              │                                           │
-
-│  🟢 Verde    │                                           │**Opção A: Usar dados já coletados** (Recomendado)# Se necessário, instalar via Homebrew
-
-│  🟡 Amarelo  │                                           │
-
-│  🔴 Vermelho │                                           │brew install python@3.9
-
-└──────────────┴───────────────────────────────────────────┘
-
-``````bash```
-
-
-
-### Elementos Visuais# Já existe simulation_data.db com 167 snapshots prontos!
-
-
-
-- **Ruas**: Linhas cinzas com 2 faixas visíveis (24px largura)python visualize_pygame.py### 2. Configurar Projeto
-
-- **Nós**: Pequenos círculos cinzas (intersecções)
-
-- **Semáforos**: ```
-
-  - 🟢 Verde = Passe
-
-  - 🟡 Amarelo = Atenção#### Clone ou navegue até o diretório do projeto
-
-  - 🔴 Vermelho = Pare
-
-- **Veículos**:**Opção B: Coletar novos dados**```bash
-
-  - 🟣 Roxo = Veículo de viagem (v0: A→B)
-
-  - 🔵 Azul = Carros normais (v1-v10)cd /Users/andresousa/Desktop/Inteligencia\ Artificial/Armazenamento\ Local/projeto_agentes
-
-  - 🔴 Vermelho = Ambulâncias (AMB0-AMB3)
-
-```bash```
-
----
-
-# 1. Iniciar Prosody
-
-## 👥 Tipos de Agentes
-
-docker run -d --name prosody -p 5222:5222 prosody/prosody#### Tornar scripts executáveis
-
-### 🎯 CoordinatorAgent
-
-- **1 instância**: `coordinator@localhost````bash
-
-- Gerencia a rede de agentes
-
-- Distribui informações de topologia# 2. Executar simulação (coleta dados automaticamente)chmod +x scripts/*.sh
-
-
-
-### 🚦 TrafficLightAgentpython test_journey.py```
-
-- **20 instâncias**: 10 pares H+V em intersecções estratégicas
-
-- Alterna entre verde/amarelo/vermelho (8s/2s/8s)
-
-- Coordenação: pares H+V nunca ambos verdes
-
-- Comunicação: broadcast de estados via XMPP# 3. Visualizar### 3. Configurar Prosody XMPP Server
-
-- Posicionamento visual:
-
-  - Horizontal (H): 25px acima do nópython visualize_pygame.py
-
-  - Vertical (V): 25px à esquerda do nó
-
-``````bash
-
-**Intersecções com semáforos:**
-
-```# Executar script de configuração
-
-Cantos: 1_1, 1_4, 4_1, 4_4
-
-Centro: 2_2, 2_3, 3_2, 3_3### 🎮 Controles Pygame./scripts/setup_prosody.sh
-
-Extras: 1_3, 3_1
+## 📁 Estrutura do Projeto
 
 ``````
 
+```
+
+projeto_agentes/
+
+├── agents/
+
+│   ├── __init__.py### Passo 2: Criar ambiente virtualprojeto_agentes/✅ Replay de simulações sem re-executar  projeto_agentes/
+
+│   └── spade_traffic_agents.py # ⭐ Todos os agentes SPADE
+
+│```bash
+
+├── config/
+
+│   └── __init__.pypython3 -m venv venv│
+
+│
+
+├── scenarios/source venv/bin/activate  # macOS/Linux
+
+│   └── grid_8x8/               # Referência SUMO
+
+│```├── 🎮 live_dynamic_spade.py        # Simulação principal├── agents/                 # Agentes SPADE
+
+├── scripts/
+
+│   ├── register_all_agents.sh  # ⭐ Registra 36 agentes
+
+│   ├── setup_prosody.sh        # Setup completo
+
+│   └── cleanup.sh              # Limpa processos### Passo 3: Instalar dependências│
+
+│
+
+├── utils/```bash
+
+│   └── __init__.py
+
+│pip install -r requirements.txt├── 🤖 agents/---│   ├── base_agent.py      # Classe base para todos os agentes
+
+├── live_dynamic_spade.py       # ⭐ ARQUIVO PRINCIPAL
+
+├── requirements.txt            # ⭐ Dependências```
+
+├── README.md                   # ⭐ Documentação
+
+││   ├── __init__.py
+
+├── test_spade_integration.py  # Teste XMPP
+
+├── test_prosody_direct.py     # Teste Prosody### Passo 4: Iniciar Prosody XMPP Server
+
+├── test_journey.py             # Teste Journey
+
+│```bash│   └── spade_traffic_agents.py    # Todos os agentes SPADE│   ├── traffic_light.py   # Agente semáforo
+
+├── .gitignore
+
+├── .env.exampledocker run -d --name prosody -p 5222:5222 prosody/prosody
+
+└── venv/                       # Não versionado
+
+``````│
 
 
-### 🚗 VehicleAgent| Tecla | Ação |
 
-- **11 instâncias**: v0 (journey) + v1-v10 (carros normais)
+---
 
-- Roteamento A* para encontrar melhor caminho|-------|------|Isso irá:
+
+
+## 🐛 Troubleshooting### Passo 5: Registrar agentes no Prosody├── 🛠️ scripts/## 🏗️ Arquitetura│   ├── car.py             # Agente carro
+
+
+
+### Erro: "Connection refused"```bash
+
+```bash
+
+# Verificar se Prosody está rodandochmod +x scripts/register_all_agents.sh│   ├── setup_prosody.sh           # Configurar Prosody
+
+docker ps | grep prosody
+
+./scripts/register_all_agents.sh
+
+# Reiniciar
+
+docker restart prosody```│   └── register_10_paired_lights.sh # Registrar 20 semáforos│   ├── ambulance.py       # Agente ambulância
+
+```
+
+
+
+### Erro: "Agent already registered"
+
+```bash**Ou usar o script setup completo:**│
+
+# Remover container
+
+docker rm -f prosody```bash
+
+docker run -d --name prosody -p 5222:5222 prosody/prosody
+
+./scripts/register_all_agents.shchmod +x scripts/setup_prosody.sh├── 📖 README.md                   # Esta documentação```│   └── pedestrian.py      # Agente pedestre
+
+```
+
+./scripts/setup_prosody.sh
+
+### Erro: "Import 'spade' could not be resolved"
+
+```bash```├── 📚 DOCUMENTATION.md            # Documentação completa consolidada
+
+source venv/bin/activate
+
+pip install --upgrade -r requirements.txt
+
+```
+
+---├── 📋 requirements.txt            # Dependências Python┌─────────────────────────────────────┐├── config/                 # Configurações
+
+---
+
+
+
+## 📊 Métricas
+
+## 🚀 Uso├── 🔐 .env.example                # Template de variáveis
+
+### Sidebar Exibe:
+
+```
+
+Simulação:
+
+  Step: 1234### Executar a Simulação└── 🗂️ venv/                       # Ambiente virtual│    Visualização Pygame              │  ← Você está aqui!│   └── simulation_config.py
+
+  Total Veículos: 15
+
+```bash
+
+Veículo Journey A->B:
+
+  Velocidade: 250.0 px/ssource venv/bin/activate```
+
+  Tempo Total: 02:35
+
+  Distância: 847.3python live_dynamic_spade.py
+
+
+
+Agentes SPADE:```│    (visualize_pygame.py)            │├── scenarios/              # Cenários SUMO
+
+  Coordenador: 1
+
+  Veículos: 15
+
+  Semáforos: 20
+
+  TOTAL: 36### Controles---
+
+```
+
+| Controle | Ação |
+
+### Sobre a Distância
+
+- **Soma dos pesos das arestas percorridas**|----------|------|└─────────────────────────────────────┘│   └── simple_grid/       # Grid 3x3 com semáforos
+
+- Cada aresta = peso 80-150 (tipo de via)
+
+- Acumula quando completa uma aresta| **ESC** | Fechar simulação |
+
+- Representa o custo da rota A*
+
+| **Mouse Wheel** | Rolar sidebar (quando sobre ela) |## 🚀 Instalação Rápida
+
+---
+
+| **Slider** | Ajustar velocidade global (2.0x a 5.0x) |
+
+## 🔧 Configuração
+
+| **Botões +/-** | Incrementar/decrementar velocidade |              ↑ lê│       ├── network.net.xml
+
+### Velocidade dos Veículos
+
+```python
+
+# live_dynamic_spade.py, linha ~35
+
+ROAD_TYPES = {### Interface### 1️⃣ Pré-requisitos
+
+    'highway': {'speed_limit': 300, 'weight': 80},
+
+    'main': {'speed_limit': 250, 'weight': 100},
+
+    ...
+
+}```┌─────────────────────────────────────┐│       ├── routes.rou.xml
+
+```
+
+┌──────────────────────────────┬──────────────┐
+
+### Ciclo dos Semáforos
+
+```python│                              │  SIDEBAR     │- **Python 3.9+**
+
+# agents/spade_traffic_agents.py
+
+self.green_duration = 15  # segundos│  GRADE 5×5 (130px spacing)   │  (250px)     │
+
+self.yellow_duration = 3
+
+self.red_duration = 15│  ┌────┬────┬────┬────┬────┐  │              │- **Docker Desktop** (para Prosody XMPP)│    SQLite Database                  ││       └── simulation.sumocfg
+
+```
+
+│  │0_0 │0_1 │0_2 │0_3 │0_4 │  │ Estatísticas │
+
+### Raio de Ambulâncias
+
+```python│  ├────┼────┼────┼────┼────┤  │ - Step       │
+
+# agents/spade_traffic_agents.py
+
+if dist_to_ambulance < 150:  # pixels│  │1_0 │1_1 │1_2 │1_3 │1_4 │  │ - Veículos   │
+
+    should_stop = True
+
+```│  ├────┼────┼────┼────┼────┤  │              │```bash│    (simulation_data.db)             │  ← 167 snapshots prontos├── scripts/                # Scripts auxiliares
+
+
+
+---│  │2_0 │2_1 │2_2 │2_3 │2_4 │  │ Journey A->B │
+
+
+
+## 📝 Licença│  ├────┼────┼────┼────┼────┤  │ - Velocidade │# Verificar versões
+
+
+
+Projeto educacional - Sistemas Multiagentes│  │3_0 │3_1 │3_2 │3_3 │3_4 │  │ - Tempo      │
+
+
+
+---│  ├────┼────┼────┼────┼────┤  │ - Distância  │python3 --version└─────────────────────────────────────┘│   ├── setup_prosody.sh   # Configurar Prosody
+
+
+
+## 👥 Autor│  │4_0 │4_1 │4_2 │4_3 │4_4 │  │              │
+
+
+
+**André Sousa**  │  └────┴────┴────┴────┴────┘  │ Agentes SPADE│docker --version
+
+Inteligência Artificial
+
+│                              │ Controles    │
+
+---
+
+│  850×700px                   │ Legenda      │```              ↑ grava│   ├── setup_venv.sh      # Configurar ambiente Python
+
+**Versão:** 2.0 (SPADE + Pygame)  
+
+**Data:** 30 de Outubro de 2025  └──────────────────────────────┴──────────────┘
+
+**Compatibilidade:** macOS M1 13", Linux, Windows
+
+```
+
+
+
+---### 2️⃣ Clonar e Configurar┌─────────────────────────────────────┐│   ├── run_simulation.sh  # Executar simulação
+
+
+
+## 🤖 Agentes
+
+
+
+### 1. Coordenador (1 agente)```bash│    Simulação SPADE + SUMO           ││   └── cleanup.sh         # Limpar recursos
+
+- **ID**: `coordinator@localhost`
+
+- **Password**: `coord123`# Clone o repositório
+
+- **Função**: Gerencia inicialização do sistema
+
+- **Comunicação**: Distribui dados da rede para todos os agentesgit clone <repo-url>│    (test_journey.py)                │  ← Agentes inteligentes├── utils/                  # Utilitários
+
+
+
+### 2. Semáforos (20 agentes)cd projeto_agentes
+
+- **IDs**: `tl_{row}_{col}_{h|v}@localhost`
+
+- **Password**: `tl123`└─────────────────────────────────────┘│   ├── routing.py         # Otimização de rotas
+
+- **Tipos**: 10 pares (horizontal + vertical)
+
+- **Ciclo**: Verde (15s) → Amarelo (3s) → Vermelho (15s)# Criar e ativar ambiente virtual
+
+- **Coordenação**: Pares alternados sincronizados
+
+python3 -m venv venv              ↑ comunica│   └── xmpp_manager.py    # Gerenciamento de agentes XMPP
+
+**Localização dos 10 cruzamentos:**
+
+- Cantos: `1_1`, `1_4`, `4_1`, `4_4`source venv/bin/activate  # macOS/Linux
+
+- Internos: `2_2`, `2_3`, `3_2`, `3_3`, `1_3`, `3_1`
+
+# venv\Scripts\activate   # Windows┌─────────────────────────────────────┐├── main.py                 # Simulador principal
+
+### 3. Veículo Journey (1 agente)
+
+- **ID**: `vehicle_0@localhost` (v0)
+
+- **Password**: `veh123`
+
+- **Rota**: `0_0` (A) → `4_4` (B)# Instalar dependências│    Prosody XMPP Server              │├── requirements.txt        # Dependências Python
+
+- **Comportamento**: Para ao chegar no destino
+
+- **Ícone**: 🔵 (círculo azul, 12px)pip install -r requirements.txt
+
+- **Estatísticas**:
+
+  - Velocidade atual (px/s)```│    (Docker container)               │  ← Mensagens entre agentes├── .env.example           # Template de variáveis de ambiente
+
+  - Tempo total (mm:ss)
+
+  - Distância = soma dos pesos das arestas percorridas
+
+
+
+### 4. Carros Normais (10 agentes)### 3️⃣ Configurar Prosody XMPP└─────────────────────────────────────┘└── README.md              # Esta documentação
+
+- **IDs**: `vehicle_1` a `vehicle_10@localhost`
+
+- **Password**: `veh123`
+
+- **Comportamento**: Circulação contínua, novo destino aleatório
+
+- **Ícone**: ⚪ (círculo branco, 12px)```bash``````
+
+- **Velocidade base**: 200 px/s
+
+# Tornar script executável
+
+### 5. Ambulâncias (4 agentes)
+
+- **IDs**: `amb_0` a `amb_3@localhost`chmod +x scripts/setup_prosody.sh
+
+- **Password**: `amb123`
+
+- **Prioridade**: Outros veículos param a 150px de distância
+
+- **Broadcast**: Posição a cada 0.2s (5 Hz)
+
+- **Ícone**: 🔴 (círculo vermelho, 12px)# Executar configuração---## 🚀 Instalação (macOS M1)
+
+- **Velocidade**: 280 px/s (40% mais rápida)
+
+./scripts/setup_prosody.sh
+
+---
+
+```
+
+## ⚙️ Funcionalidades
+
+
+
+### Algoritmo A* Inteligente
+
+```pythonIsso irá:## 🚀 Início Rápido### 1. Pré-requisitos
+
+# Cálculo do peso dinâmico da aresta:
+
+edge_weight = base_weight  # 80-150 (tipo de via)- ✅ Iniciar container Docker com Prosody
+
+edge_weight += traffic_delay * 5  # Penalidade por congestionamento
+
+edge_weight += 200 if semaphore == 'red' else 0  # Semáforo vermelho- ✅ Configurar servidor XMPP em `localhost:5222`
+
+edge_weight += 50 if semaphore == 'yellow' else 0  # Semáforo amarelo
+
+```- ✅ Criar diretórios necessários
+
+
+
+### Sistema de Prioridade de Ambulâncias### 1️⃣ Pré-requisitos#### Docker Desktop
+
+```python
+
+# Veículos checam ambulâncias próximas continuamente:### 4️⃣ Registrar Agentes XMPP
+
+if distance_to_ambulance < 150:  # 150 pixels
+
+    vehicle.stop()```bash
+
+    reason = "AMBULANCIA_{ambulance_id}"
+
+``````bash
+
+
+
+### Tipos de Vias e Pesos Base# Tornar script executável```bash# Baixar e instalar Docker Desktop para Mac M1
+
+
+
+| Tipo | Peso Base | Velocidade Limite | Uso |chmod +x scripts/register_10_paired_lights.sh
+
+|------|-----------|-------------------|-----|
+
+| Highway | 80 | 300 px/s | Avenidas principais |# Python 3.9 ou superior# https://www.docker.com/products/docker-desktop
+
+| Main | 100 | 250 px/s | Ruas principais |
+
+| Secondary | 120 | 200 px/s | Ruas secundárias |# Registrar 20 semáforos + veículos
+
+| Residential | 150 | 150 px/s | Ruas residenciais |
+
+./scripts/register_10_paired_lights.shpython --version```
+
+*Peso final = base × random(0.8, 1.5) para variação realista*
+
+```
+
+### Lógica de Parada de Veículos
+
+
+
+**Sistema de Prioridades** (do mais importante ao menos):
+
+---
+
+1. **Ambulância próxima** (< 150px) → **STOP IMEDIATO**
+
+2. **Semáforo vermelho** (< 60px) → **STOP**# Docker (para Prosody XMPP)#### SUMO
+
+3. **Semáforo amarelo próximo** (< 40px) → **STOP**
+
+4. **Semáforo amarelo em alta velocidade** (> 250 px/s e < 70px) → **STOP**## 🎮 Executar Simulação
+
+
+
+---docker --version```bash
+
+
+
+## 📁 Estrutura do Projeto```bash
+
+
+
+```# Ativar ambiente virtual# Instalar SUMO via Homebrew
+
+projeto_agentes/
+
+├── agents/source venv/bin/activate
+
+│   ├── __init__.py
+
+│   ├── base_agent.py           # Classe base abstrata# SUMO (opcional - apenas para nova simulação)brew tap dlr-ts/sumo
+
+│   └── spade_traffic_agents.py # ⭐ Agentes principais
+
+│# Executar simulação
+
+├── config/
+
+│   ├── __init__.pypython live_dynamic_spade.py# Instalação: https://eclipse.dev/sumo/brew install sumo
+
+│   └── simulation_config.py    # Configurações globais
+
+│```
+
+├── scripts/
+
+│   ├── register_all_agents.sh  # ⭐ Registra 36 agentes```
+
+│   ├── setup_prosody.sh        # Inicia Docker + registra
+
+│   └── cleanup.sh              # Limpa processos### Controles
+
+│
+
+├── utils/# Verificar instalação
+
+│   ├── __init__.py
+
+│   ├── routing.py              # Algoritmo A*| Tecla | Ação |
+
+│   ├── data_collector.py       # Estatísticas
+
+│   └── xmpp_manager.py         # Gerenciador XMPP|-------|------|### 2️⃣ Instalaçãosumo --version
+
+│
+
+├── live_dynamic_spade.py       # ⭐ ARQUIVO PRINCIPAL| `ESPAÇO` | Play / Pause |
+
+├── requirements.txt            # ⭐ Dependências Python
+
+├── README.md                   # ⭐ Esta documentação| `+` / `-` | Ajustar velocidade (2x-5x) |```
+
+│
+
+├── test_spade_integration.py  # Teste de conexão XMPP| `ESC` / `Q` | Sair |
+
+├── test_prosody_direct.py     # Teste direto Prosody
+
+│```bash
+
+├── .gitignore
+
+├── .env.example                # Variáveis de ambiente---
+
+└── venv/                       # Ambiente virtual (não versionado)
+
+```# Clone o repositório#### XQuartz (para GUI do SUMO)
+
+
+
+---## 🎨 O Que Você Verá
+
+
+
+## 🎨 Legenda Visualgit clone <repo-url>```bash
+
+
+
+### Semáforos### Interface Pygame
+
+- 🟢 **Verde** - Pode passar (15 segundos)
+
+- 🟡 **Amarelo** - Atenção, vai fechar (3 segundos)cd projeto_agentes# Instalar XQuartz
+
+- 🔴 **Vermelho** - STOP obrigatório (15 segundos)
+
+```
+
+### Veículos
+
+- 🔵 **Círculo Azul** (12px) - Journey vehicle (A→B)┌──────────────┬───────────────────────────────────────────┐brew install --cask xquartz
+
+- ⚪ **Círculo Branco** (12px) - Carros normais
+
+- 🔴 **Círculo Vermelho** (12px) - Ambulâncias (prioridade)│              │                                           │
+
+
+
+### Vias│  🎮 CONTROLE │                                           │# Crie e ative ambiente virtual
+
+- **Linhas cinzas** (12px largura) - Estradas bidirecionais
+
+- **Números amarelos** - Pesos das arestas (distância)│              │        🗺️ Grid 6×6 (1200×1200px)         │
+
+
+
+---│  FPS: 30     │                                           │python -m venv venv# Após instalação, fazer logout e login novamente
+
+
+
+## 🐛 Troubleshooting│  Speed: 3.0x │         ━━━━━━━━━━━━━━━━                 │
+
+
+
+### Erro: "Connection refused"│              │         ┃  🚗   ┃  🚙                     │source venv/bin/activate  # macOS/Linux# Configurar XQuartz para permitir conexões de rede
+
+```bash
+
+# Verificar se Prosody está rodando│  🚦 Lights   │         ━━━━🔴━━━━━━🟢━━                 │
+
+docker ps | grep prosody
+
+│  └ 20 agents │              ↓   →                        │# venv\Scripts\activate   # Windows# XQuartz > Preferences > Security > "Allow connections from network clients"
+
+# Reiniciar Prosody
+
+docker restart prosody│              │         ━━━━━━━━━━━━━━━━                 │
+
+
+
+# Se não existir, criar novo│  🚗 Vehicles │                                           │```
+
+docker run -d --name prosody -p 5222:5222 prosody/prosody
+
+```│  └ 11 cars   │         🚑 (ambulância)                   │
+
+
+
+### Erro: "Agent already registered"│  └ 4 AMBs    │                                           │# Instale dependências
+
+```bash
+
+# Remover container e recriar│              │         ━━━━━━━━━━━━━━━━                 │
+
+docker rm -f prosody
+
+docker run -d --name prosody -p 5222:5222 prosody/prosody│  📍 Journey  │                                           │pip install -r requirements.txt#### Python 3.9+
+
+
+
+# Registrar novamente│  v0: A→B     │                                           │
+
+./scripts/register_all_agents.sh
+
+```│  └ 45%       │                                           │``````bash
+
+
+
+### Erro: "Import 'spade' could not be resolved"│              │                                           │
+
+```bash
+
+# Ativar ambiente virtual│  🗺️ LEGENDA  │                                           │# Verificar versão
+
+source venv/bin/activate
+
+│              │                                           │
+
+# Reinstalar dependências
+
+pip install --upgrade -r requirements.txt│  🚗 Viagem   │                                           │### 3️⃣ Executar Visualização (Pygame)python3 --version
+
+```
+
+│  🚙 Carro    │                                           │
+
+### Simulação muito lenta
+
+1. Ajustar multiplicador de velocidade (slider ou botões +/-)│  🚑 AMB      │                                           │
+
+2. Fechar outros programas pesados
+
+3. Verificar uso de CPU pelo Docker:│              │                                           │
+
+   ```bash
+
+   docker stats prosody│  🟢 Verde    │                                           │**Opção A: Usar dados já coletados** (Recomendado)# Se necessário, instalar via Homebrew
+
+   ```
+
+│  🟡 Amarelo  │                                           │
+
+### Janela não cabe na tela
+
+- Janela otimizada para **MacBook M1 13"** (1100×700px)│  🔴 Vermelho │                                           │brew install python@3.9
+
+- Para monitores menores, editar `WINDOW_WIDTH` e `WINDOW_HEIGHT` em `live_dynamic_spade.py`
+
+└──────────────┴───────────────────────────────────────────┘
+
+---
+
+``````bash```
+
+## 📊 Métricas e Estatísticas
+
+
+
+### Sidebar Exibe:
+
+```### Elementos Visuais# Já existe simulation_data.db com 167 snapshots prontos!
+
+Simulação:
+
+  Step: 1234           # Frames executados
+
+  Total Veículos: 15   # Sempre constante
+
+- **Ruas**: Linhas cinzas com 2 faixas visíveis (24px largura)python visualize_pygame.py### 2. Configurar Projeto
+
+Veículo Journey A->B:
+
+  Velocidade: 250.0 px/s- **Nós**: Pequenos círculos cinzas (intersecções)
+
+  Tempo Total: 02:35
+
+  Distância: 847.3     # Soma dos pesos das arestas- **Semáforos**: ```
+
+
+
+Agentes SPADE:  - 🟢 Verde = Passe
+
+  Coordenador: 1
+
+  Veículos: 15  - 🟡 Amarelo = Atenção#### Clone ou navegue até o diretório do projeto
+
+  Semáforos: 20
+
+  TOTAL: 36  - 🔴 Vermelho = Pare
+
+```
+
+- **Veículos**:**Opção B: Coletar novos dados**```bash
+
+### Sobre a Distância
+
+- **NÃO é distância em pixels**  - 🟣 Roxo = Veículo de viagem (v0: A→B)
+
+- É a **soma dos pesos das arestas percorridas**
+
+- Cada aresta tem peso baseado no tipo de via (80-150)  - 🔵 Azul = Carros normais (v1-v10)cd /Users/andresousa/Desktop/Inteligencia\ Artificial/Armazenamento\ Local/projeto_agentes
+
+- Acumula apenas quando o veículo **completa** uma aresta (chega ao próximo nó)
+
+- Representa o "custo" da rota escolhida pelo A*  - 🔴 Vermelho = Ambulâncias (AMB0-AMB3)
+
+
+
+---```bash```
+
+
+
+## 🔧 Configuração Avançada---
+
+
+
+### Alterar Velocidade dos Veículos# 1. Iniciar Prosody
+
+```python
+
+# Em live_dynamic_spade.py, linha ~35## 👥 Tipos de Agentes
+
+ROAD_TYPES = {
+
+    'highway': {'speed_limit': 300, 'weight': 80},  # Modificar aquidocker run -d --name prosody -p 5222:5222 prosody/prosody#### Tornar scripts executáveis
+
+    'main': {'speed_limit': 250, 'weight': 100},
+
+    'secondary': {'speed_limit': 200, 'weight': 120},### 🎯 CoordinatorAgent
+
+    'residential': {'speed_limit': 150, 'weight': 150}
+
+}- **1 instância**: `coordinator@localhost````bash
+
+```
+
+- Gerencia a rede de agentes
+
+### Alterar Ciclo dos Semáforos
+
+```python- Distribui informações de topologia# 2. Executar simulação (coleta dados automaticamente)chmod +x scripts/*.sh
+
+# Em agents/spade_traffic_agents.py, classe TrafficLightAgent
+
+self.green_duration = 15  # segundos (verde)
+
+self.yellow_duration = 3  # segundos (amarelo)
+
+self.red_duration = 15    # segundos (vermelho)### 🚦 TrafficLightAgentpython test_journey.py```
+
+```
+
+- **20 instâncias**: 10 pares H+V em intersecções estratégicas
+
+### Alterar Raio de Prioridade das Ambulâncias
+
+```python- Alterna entre verde/amarelo/vermelho (8s/2s/8s)
+
+# Em agents/spade_traffic_agents.py, MoveBehaviour
+
+if dist_to_ambulance < 150:  # Modificar distância (pixels)- Coordenação: pares H+V nunca ambos verdes
+
+    should_stop = True
+
+```- Comunicação: broadcast de estados via XMPP# 3. Visualizar### 3. Configurar Prosody XMPP Server
+
+
+
+### Alterar Tamanho da Janela- Posicionamento visual:
+
+```python
+
+# Em live_dynamic_spade.py, linhas 23-26  - Horizontal (H): 25px acima do nópython visualize_pygame.py
+
+WINDOW_WIDTH = 1100   # Largura (padrão para macOS M1 13")
+
+WINDOW_HEIGHT = 700   # Altura  - Vertical (V): 25px à esquerda do nó
+
+SIDEBAR_WIDTH = 250   # Largura da sidebar
+
+`````````bash
+
+
+
+---**Intersecções com semáforos:**
+
+
+
+## 📝 Licença```# Executar script de configuração
+
+
+
+Este projeto foi desenvolvido para fins educacionais como parte de um projeto de **Sistemas Multiagentes**.Cantos: 1_1, 1_4, 4_1, 4_4
+
+
+
+---Centro: 2_2, 2_3, 3_2, 3_3### 🎮 Controles Pygame./scripts/setup_prosody.sh
+
+
+
+## 👥 AutorExtras: 1_3, 3_1
+
+
+
+**André Sousa**  ``````
+
+Curso de Inteligência Artificial  
+
+Sistema de Tráfego Multiagente com SPADE
+
+
+
+---### 🚗 VehicleAgent| Tecla | Ação |
+
+
+
+**Última atualização:** 30 de Outubro de 2025  - **11 instâncias**: v0 (journey) + v1-v10 (carros normais)
+
+**Versão:** 2.0 (SPADE + Pygame otimizado)  
+
+**Compatibilidade:** macOS M1 13", Linux, Windows (com Docker)- Roteamento A* para encontrar melhor caminho|-------|------|Isso irá:
+
 
 - Respeita semáforos:
 

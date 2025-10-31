@@ -75,9 +75,12 @@ class VehicleAgent(Agent):
         move_behaviour = self.MoveBehaviour(period=0.05)  # Reduzido de 0.1 para 0.05
         self.add_behaviour(move_behaviour)
         
-        # Behaviour para receber mensagens (SEM TEMPLATE para aceitar TODAS)
+        # Behaviour para receber mensagens com Template explícito
         receive_behaviour = self.ReceiveMessagesBehaviour()
-        self.add_behaviour(receive_behaviour)  # Sem template = aceita todas as mensagens
+        # Template vazio = aceita TODAS as mensagens (elimina warnings)
+        template = Template()
+        template.set_metadata("performative", "inform")
+        self.add_behaviour(receive_behaviour, template)
         
         # Behaviour para reportar trafego (menos frequente para economizar)
         report_behaviour = self.ReportTrafficBehaviour(period=3.0)  # Aumentado de 2.0 para 3.0
@@ -307,12 +310,12 @@ class VehicleAgent(Agent):
                     self.agent.route_index += 1
                     
                     # Acumular custo da aresta percorrida (para journey vehicle)
-                    if self.agent.vehicle_id == 'v0' and prev_node and self.agent.edge_start_node:
+                    if self.agent.vehicle_id == 'v0' and self.agent.edge_start_node:
                         # Encontrar a aresta entre edge_start_node e current_node
                         for neighbor, edge_id in self.agent.graph.get(self.agent.edge_start_node, []):
                             if neighbor == target_node:
-                                edge_data = self.agent.edges.get(edge_id, {})
-                                edge_weight = edge_data.get('weight', 100.0)
+                                # Usar o peso REAL da aresta armazenada
+                                edge_weight = self.agent.edges[edge_id]['weight']
                                 self.agent.route_cost_traveled += edge_weight
                                 break
                         # Atualizar para próxima aresta
@@ -367,14 +370,7 @@ class VehicleAgent(Agent):
                     if msg_type == 'network_data':
                         # Receber dados da rede
                         self.agent.nodes = data.get('nodes', {})
-                        edges_received = data.get('edges', {})
-                        # Converter chaves de string para int se necessário
-                        self.agent.edges = {}
-                        for key, value in edges_received.items():
-                            try:
-                                self.agent.edges[int(key)] = value
-                            except (ValueError, TypeError):
-                                self.agent.edges[key] = value
+                        self.agent.edges = data.get('edges', {})
                         self.agent.graph = data.get('graph', {})
                         
                         # Inicializar posicao

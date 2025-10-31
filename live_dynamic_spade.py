@@ -145,7 +145,7 @@ class SPADETrafficSimulation:
                 }
                 self.nodes_simple[node_id] = (x, y)
         
-        # Criar arestas com pesos variados para cada tipo de rua
+        # Criar arestas com pesos variados
         edge_id = 0
         for row in range(GRID_SIZE):
             for col in range(GRID_SIZE):

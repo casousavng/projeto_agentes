@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Rede 8x8 com 64 nós (intersecções) -->
+<nodes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/nodes_file.xsd">
+    <!-- Linha 0 (inferior) - y=0 -->
+    <node id="n0_0" x="0" y="0" type="priority"/>
+    <node id="n0_1" x="150" y="0" type="traffic_light"/>
+    <node id="n0_2" x="280" y="0" type="priority"/>
+    <node id="n0_3" x="450" y="0" type="traffic_light"/>
+    <node id="n0_4" x="600" y="0" type="priority"/>
+    <node id="n0_5" x="780" y="0" type="traffic_light"/>
+    <node id="n0_6" x="920" y="0" type="priority"/>
+    <node id="n0_7" x="1100" y="0" type="priority"/>
+    
+    <!-- Linha 1 - y=120 -->
+    <node id="n1_0" x="0" y="120" type="priority"/>
+    <node id="n1_1" x="150" y="120" type="traffic_light"/>
+    <node id="n1_2" x="280" y="120" type="priority"/>
+    <node id="n1_3" x="450" y="120" type="traffic_light"/>
+    <node id="n1_4" x="600" y="120" type="priority"/>
+    <node id="n1_5" x="780" y="120" type="traffic_light"/>
+    <node id="n1_6" x="920" y="120" type="priority"/>
+    <node id="n1_7" x="1100" y="120" type="priority"/>
+    
+    <!-- Linha 2 - y=260 -->
+    <node id="n2_0" x="0" y="260" type="priority"/>
+    <node id="n2_1" x="150" y="260" type="traffic_light"/>
+    <node id="n2_2" x="280" y="260" type="priority"/>
+    <node id="n2_3" x="450" y="260" type="traffic_light"/>
+    <node id="n2_4" x="600" y="260" type="priority"/>
+    <node id="n2_5" x="780" y="260" type="traffic_light"/>
+    <node id="n2_6" x="920" y="260" type="priority"/>
+    <node id="n2_7" x="1100" y="260" type="priority"/>
+    
+    <!-- Linha 3 - y=380 -->
+    <node id="n3_0" x="0" y="380" type="priority"/>
+    <node id="n3_1" x="150" y="380" type="traffic_light"/>
+    <node id="n3_2" x="280" y="380" type="priority"/>
+    <node id="n3_3" x="450" y="380" type="traffic_light"/>
+    <node id="n3_4" x="600" y="380" type="priority"/>
+    <node id="n3_5" x="780" y="380" type="traffic_light"/>
+    <node id="n3_6" x="920" y="380" type="priority"/>
+    <node id="n3_7" x="1100" y="380" type="priority"/>
+    
+    <!-- Linha 4 - y=520 -->
+    <node id="n4_0" x="0" y="520" type="priority"/>
+    <node id="n4_1" x="150" y="520" type="traffic_light"/>
+    <node id="n4_2" x="280" y="520" type="priority"/>
+    <node id="n4_3" x="450" y="520" type="traffic_light"/>
+    <node id="n4_4" x="600" y="520" type="priority"/>
+    <node id="n4_5" x="780" y="520" type="traffic_light"/>
+    <node id="n4_6" x="920" y="520" type="priority"/>
+    <node id="n4_7" x="1100" y="520" type="priority"/>
+    
+    <!-- Linha 5 - y=640 -->
+    <node id="n5_0" x="0" y="640" type="priority"/>
+    <node id="n5_1" x="150" y="640" type="traffic_light"/>
+    <node id="n5_2" x="280" y="640" type="priority"/>
+    <node id="n5_3" x="450" y="640" type="traffic_light"/>
+    <node id="n5_4" x="600" y="640" type="priority"/>
+    <node id="n5_5" x="780" y="640" type="traffic_light"/>
+    <node id="n5_6" x="920" y="640" type="priority"/>
+    <node id="n5_7" x="1100" y="640" type="priority"/>
+    
+    <!-- Linha 6 - y=780 -->
+    <node id="n6_0" x="0" y="780" type="priority"/>
+    <node id="n6_1" x="150" y="780" type="traffic_light"/>
+    <node id="n6_2" x="280" y="780" type="priority"/>
+    <node id="n6_3" x="450" y="780" type="traffic_light"/>
+    <node id="n6_4" x="600" y="780" type="priority"/>
+    <node id="n6_5" x="780" y="780" type="traffic_light"/>
+    <node id="n6_6" x="920" y="780" type="priority"/>
+    <node id="n6_7" x="1100" y="780" type="priority"/>
+    
+    <!-- Linha 7 (superior) - y=900 -->
+    <node id="n7_0" x="0" y="900" type="priority"/>
+    <node id="n7_1" x="150" y="900" type="traffic_light"/>
+    <node id="n7_2" x="280" y="900" type="priority"/>
+    <node id="n7_3" x="450" y="900" type="traffic_light"/>
+    <node id="n7_4" x="600" y="900" type="priority"/>
+    <node id="n7_5" x="780" y="900" type="traffic_light"/>
+    <node id="n7_6" x="920" y="900" type="priority"/>
+    <node id="n7_7" x="1100" y="900" type="priority"/>
+</nodes>
