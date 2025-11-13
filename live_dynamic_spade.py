@@ -8,6 +8,16 @@ Simulacao Dinamica de Trafego com SPADE + Pygame
 - Roteamento inteligente A*
 """
 
+## TODO: Implementar logica de reroute dinamico para ambulancias
+## TODO: Aprimorar interface Pygame (botões, sliders, etc.)
+## TODO: Manual overide do estado de ação do agente semaforo via UI
+## TODO: Estatísticas detalhadas de desempenho dos agentes
+## TODO: Agente disruptor gerador de incidentes (ruas instrafegaveis) - impactando roteamento - MUITO IMPORTANTE
+## TODO: Melhorar visualizacao dos veiculos (setas, rotacao, etc.)
+## TODO: Veiculos nao podem ficar sobrepostos parados na mesma faixa
+## TODO: Veiculos devem respeitar distancia minima entre si
+
+
 import pygame # type: ignore
 import sys
 import asyncio
@@ -86,7 +96,7 @@ class SPADETrafficSimulation:
         self.vehicle_agents = []  # Lista de VehicleAgents
         self.traffic_light_agents = []  # Lista de TrafficLightAgents
         
-        # IDs dos semaforos (46 semaforos)
+        # IDs dos semaforos
         self.traffic_light_nodes = []
         self.create_traffic_light_list()
         
@@ -96,11 +106,11 @@ class SPADETrafficSimulation:
         self.asyncio_loop = None
         self.agent_thread = None
         
-        # Controle de velocidade global
+        # Controlo de velocidade global da simulacao
         self.speed_multiplier = 2.0  # Multiplicador de velocidade (2.0x a 5.0x) - AUMENTADO
         self.slider_dragging = False
         
-        # Controle de tempo para cálculo de espera
+        # Controlo de tempo para cálculo de espera
         self.last_update_time = time.time()
         
         # Estatisticas
@@ -469,9 +479,9 @@ class SPADETrafficSimulation:
         print("")
         print("✅ Todos os agentes SPADE iniciados!")
         print("📡 Comunicacao XMPP via Prosody ativa")
-        print(f"   🎯 2 journey vehicles (v0: A->B, v1: B->A)")
-        print(f"   � 4 ambulâncias AMB (v2, v4, v6, v8)")
-        print(f"   🚗 4 carros normais (v3, v5, v7, v9)")
+        print(f"   🎯 1 journey vehicle (v0: A->B)")
+        print(f"   � 4 ambulâncias AMB (AMB0-AMB3)")
+        print(f"   🚗 10 carros normais (v1-v10)")
         print("\n✅ Todos os agentes SPADE iniciados!")
         print("📡 Comunicacao XMPP via Prosody ativa\n")
     
