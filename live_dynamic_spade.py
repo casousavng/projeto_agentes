@@ -14,8 +14,8 @@ Simulacao Dinamica de Trafego com SPADE + Pygame
 ## TODO: Estatísticas detalhadas de desempenho dos agentes
 ## TODO: Agente disruptor gerador de incidentes (ruas instrafegaveis) - impactando roteamento - MUITO IMPORTANTE
 ## TODO: Melhorar visualizacao dos veiculos (setas, rotacao, etc.)
-## TODO: Veiculos nao podem ficar sobrepostos parados na mesma faixa
 ## TODO: Veiculos devem respeitar distancia minima entre si
+## TODO: Primeiro veiculo a parar no semafro vermelho deve parar junto deste e nao longe dele
 
 
 import pygame # type: ignore
