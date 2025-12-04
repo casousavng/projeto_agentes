@@ -2,17 +2,30 @@
 # -*- coding: utf-8 -*-
 """
 Simulacao Dinamica de Trafego com SPADE + Pygame
-- Agentes SPADE reais (VehicleAgent, TrafficLightAgent, CoordinatorAgent)
+- Agentes SPADE reais (VehicleAgent, TrafficLightAgent, CoordinatorAgent, DisruptorAgent)
 - Comunicacao XMPP via Prosody
 - Visualizacao avancada com Pygame
 - Roteamento inteligente A*
+- Sistema de disrupção de vias (bloqueios aleatórios)
+
+CONTROLES:
+- P: Pausar/Continuar simulação
+- ESPAÇO: Ativar/Desativar disrupção (6 vias bloqueadas aleatoriamente)
+- +/-: Ajustar velocidade da simulação
+- ESC: Sair
+
+FUNCIONALIDADE DE DISRUPÇÃO:
+Ao pressionar ESPAÇO, o DisruptorAgent bloqueia aleatoriamente 6 vias da rede.
+Os veículos recalculam automaticamente suas rotas usando A* para evitar as vias bloqueadas.
+As vias bloqueadas são exibidas em VERMELHO com um X no meio.
+Pressione ESPAÇO novamente para remover os bloqueios.
 """
 
 ## TODO: Implementar logica de reroute dinamico para ambulancias
 ## TODO: Aprimorar interface Pygame (botões, sliders, etc.)
 ## TODO: Manual overide do estado de ação do agente semaforo via UI
 ## TODO: Estatísticas detalhadas de desempenho dos agentes
-## TODO: Agente disruptor gerador de incidentes (ruas instrafegaveis) - impactando roteamento - MUITO IMPORTANTE
+## TODO: ✅ CONCLUÍDO: Agente disruptor gerador de incidentes (ruas intrafegaveis) - impactando roteamento
 ## TODO: Melhorar visualizacao dos veiculos (setas, rotacao, etc.)
 ## TODO: Veiculos devem respeitar distancia minima entre si
 ## TODO: Primeiro veiculo a parar no semafro vermelho deve parar junto deste e nao longe dele
@@ -28,7 +41,7 @@ import math
 from typing import Dict, List, Optional
 
 # Import dos agentes SPADE
-from agents.spade_traffic_agents import VehicleAgent, TrafficLightAgent, CoordinatorAgent
+from agents.spade_traffic_agents import VehicleAgent, TrafficLightAgent, CoordinatorAgent, DisruptorAgent
 
 # Configuracoes Pygame
 WINDOW_WIDTH = 1400
@@ -53,6 +66,7 @@ COLOR_LIGHT_RED = (239, 68, 68)
 COLOR_TEXT = (255, 255, 255)
 COLOR_ACCENT = (102, 126, 234)
 COLOR_DISTANCE_LABEL = (150, 150, 200)
+COLOR_BLOCKED_ROAD = (200, 50, 50)  # Vermelho para vias bloqueadas
 
 # Tipos de ruas e seus pesos (TODAS COM MESMA LARGURA - 2 faixas bem visíveis)
 ROAD_TYPES = {
@@ -71,8 +85,13 @@ class SPADETrafficSimulation:
     
     def __init__(self):
         pygame.init()
-        self.screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
+        
+        # Configuração de tela com suporte a fullscreen
+        self.is_fullscreen = False
+        self.windowed_size = (WINDOW_WIDTH, WINDOW_HEIGHT)
+        self.screen = pygame.display.set_mode(self.windowed_size, pygame.RESIZABLE)
         pygame.display.set_caption("SPADE Traffic Simulation - Comunicacao XMPP Real")
+        
         self.clock = pygame.time.Clock()
         self.font_title = pygame.font.SysFont('Arial', 24, bold=True)
         self.font_stats = pygame.font.SysFont('Arial', 16, bold=True)
@@ -93,6 +112,7 @@ class SPADETrafficSimulation:
         
         # Agentes SPADE
         self.coordinator_agent = None
+        self.disruptor_agent = None  # Agente disruptor
         self.vehicle_agents = []  # Lista de VehicleAgents
         self.traffic_light_agents = []  # Lista de TrafficLightAgents
         
@@ -336,11 +356,12 @@ class SPADETrafficSimulation:
         min_y -= margin
         max_y += margin
         
-        # Calcular escala
+        # Calcular escala usando dimensões atuais da tela
+        screen_width, screen_height = self.screen.get_size()
         map_width = max_x - min_x
         map_height = max_y - min_y
-        available_width = WINDOW_WIDTH - SIDEBAR_WIDTH - 40
-        available_height = WINDOW_HEIGHT - 40
+        available_width = screen_width - SIDEBAR_WIDTH - 40
+        available_height = screen_height - 40
         
         scale = min(available_width / map_width, available_height / map_height)
         
@@ -358,6 +379,22 @@ class SPADETrafficSimulation:
         screen_y = 20 + (y - self.viewport['min_y']) * self.viewport['scale']
         return int(screen_x), int(screen_y)
     
+    def toggle_fullscreen(self):
+        """Alterna entre modo tela cheia e janela"""
+        self.is_fullscreen = not self.is_fullscreen
+        
+        if self.is_fullscreen:
+            # Entrar em tela cheia
+            self.screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+            print("🖥️  Modo TELA CHEIA ativado (F11 para sair)")
+        else:
+            # Voltar para janela
+            self.screen = pygame.display.set_mode(self.windowed_size, pygame.RESIZABLE)
+            print("🪟  Modo JANELA ativado (F11 para tela cheia)")
+        
+        # Recalcular viewport para a nova resolução
+        self.viewport = self._calculate_viewport()
+    
     async def start_agents(self):
         """Inicia todos os agentes SPADE"""
         print("\n🚀 Iniciando agentes SPADE...")
@@ -373,6 +410,17 @@ class SPADETrafficSimulation:
         )
         await self.coordinator_agent.start(auto_register=False)
         print("   ✅ CoordinatorAgent conectado ao Prosody")
+        
+        # 1.5. Iniciar Disruptor
+        print("🚧 Iniciando DisruptorAgent...")
+        self.disruptor_agent = DisruptorAgent(
+            "disruptor@localhost",
+            "disruptor",
+            self.edges_simple
+        )
+        self.disruptor_agent.coordinator_jid = "coordinator@localhost"
+        await self.disruptor_agent.start(auto_register=False)  # Requer registro prévio
+        print("   ✅ DisruptorAgent conectado ao Prosody")
         
         await asyncio.sleep(0.5)
         
@@ -638,47 +686,84 @@ class SPADETrafficSimulation:
             from_pos = self.world_to_screen(from_node['x'], from_node['y'])
             to_pos = self.world_to_screen(to_node['x'], to_node['y'])
             
+            # Verificar se a via está bloqueada
+            edge_id = edge['id']
+            is_blocked = False
+            if self.disruptor_agent and self.disruptor_agent.disruption_active:
+                is_blocked = edge_id in self.disruptor_agent.blocked_edges
+            
             # LARGURA UNIFORME para todas as ruas (16px = 2 faixas de 8px cada)
             road_width = 16
-            color = ROAD_TYPES[edge['type']]['color']
             
-            # 1. Desenhar borda preta externa (calçada)
-            pygame.draw.line(self.screen, (30, 30, 30), from_pos, to_pos, road_width + 4)
-            
-            # 2. Desenhar rua (asfalto cinza)
-            pygame.draw.line(self.screen, color, from_pos, to_pos, road_width)
-            
-            # 3. Desenhar linha divisória central AMARELA (faixa dupla bem visível)
-            pygame.draw.line(self.screen, COLOR_LANE_DIVIDER, from_pos, to_pos, 2)
-            
-            # 4. Desenhar linhas brancas nas bordas (marcação de faixa)
-            # Calcular vetor perpendicular para desenhar as bordas
-            dx = to_pos[0] - from_pos[0]
-            dy = to_pos[1] - from_pos[1]
-            length = math.sqrt(dx*dx + dy*dy)
-            if length > 0:
-                # Vetor perpendicular normalizado
-                perp_x = -dy / length
-                perp_y = dx / length
+            if is_blocked:
+                # Via bloqueada: desenhar em vermelho com X
+                color = COLOR_BLOCKED_ROAD
                 
-                # Deslocamento para as bordas (10px do centro para ruas de 24px)
-                offset = 10
+                # 1. Desenhar borda preta externa (calçada)
+                pygame.draw.line(self.screen, (30, 30, 30), from_pos, to_pos, road_width + 4)
                 
-                # Borda superior (linha branca)
-                border1_start = (from_pos[0] + perp_x * offset, from_pos[1] + perp_y * offset)
-                border1_end = (to_pos[0] + perp_x * offset, to_pos[1] + perp_y * offset)
-                pygame.draw.line(self.screen, (200, 200, 200), border1_start, border1_end, 1)
+                # 2. Desenhar rua bloqueada (vermelho)
+                pygame.draw.line(self.screen, color, from_pos, to_pos, road_width)
                 
-                # Borda inferior (linha branca)
-                border2_start = (from_pos[0] - perp_x * offset, from_pos[1] - perp_y * offset)
-                border2_end = (to_pos[0] - perp_x * offset, to_pos[1] - perp_y * offset)
-                pygame.draw.line(self.screen, (200, 200, 200), border2_start, border2_end, 1)
+                # 3. Desenhar X no meio da via
+                mid_x = (from_pos[0] + to_pos[0]) // 2
+                mid_y = (from_pos[1] + to_pos[1]) // 2
+                x_size = 15
+                pygame.draw.line(self.screen, (255, 255, 255), 
+                               (mid_x - x_size, mid_y - x_size), 
+                               (mid_x + x_size, mid_y + x_size), 3)
+                pygame.draw.line(self.screen, (255, 255, 255), 
+                               (mid_x - x_size, mid_y + x_size), 
+                               (mid_x + x_size, mid_y - x_size), 3)
+            else:
+                # Via normal
+                color = ROAD_TYPES[edge['type']]['color']
+                
+                # 1. Desenhar borda preta externa (calçada)
+                pygame.draw.line(self.screen, (30, 30, 30), from_pos, to_pos, road_width + 4)
+                
+                # 2. Desenhar rua (asfalto cinza)
+                pygame.draw.line(self.screen, color, from_pos, to_pos, road_width)
+                
+                # 3. Desenhar linha divisória central AMARELA (faixa dupla bem visível)
+                pygame.draw.line(self.screen, COLOR_LANE_DIVIDER, from_pos, to_pos, 2)
             
-            # Mostrar peso da rua no meio
+            # 4. Desenhar linhas brancas nas bordas (marcação de faixa) - apenas se não bloqueada
+            if not is_blocked:
+                # Calcular vetor perpendicular para desenhar as bordas
+                dx = to_pos[0] - from_pos[0]
+                dy = to_pos[1] - from_pos[1]
+                length = math.sqrt(dx*dx + dy*dy)
+                if length > 0:
+                    # Vetor perpendicular normalizado
+                    perp_x = -dy / length
+                    perp_y = dx / length
+                    
+                    # Deslocamento para as bordas (10px do centro para ruas de 24px)
+                    offset = 10
+                    
+                    # Borda superior (linha branca)
+                    border1_start = (from_pos[0] + perp_x * offset, from_pos[1] + perp_y * offset)
+                    border1_end = (to_pos[0] + perp_x * offset, to_pos[1] + perp_y * offset)
+                    pygame.draw.line(self.screen, (200, 200, 200), border1_start, border1_end, 1)
+                    
+                    # Borda inferior (linha branca)
+                    border2_start = (from_pos[0] - perp_x * offset, from_pos[1] - perp_y * offset)
+                    border2_end = (to_pos[0] - perp_x * offset, to_pos[1] - perp_y * offset)
+                    pygame.draw.line(self.screen, (200, 200, 200), border2_start, border2_end, 1)
+            
+            # Mostrar peso da rua no meio (ou "BLOCKED" se bloqueada)
             mid_x = (from_pos[0] + to_pos[0]) // 2
             mid_y = (from_pos[1] + to_pos[1]) // 2
-            weight_text = f"{int(edge['weight'])}"
-            weight_surface = self.font_label.render(weight_text, True, COLOR_DISTANCE_LABEL)
+            
+            if is_blocked:
+                weight_text = "BLOCKED"
+                text_color = (255, 255, 255)
+            else:
+                weight_text = f"{int(edge['weight'])}"
+                text_color = COLOR_DISTANCE_LABEL
+            
+            weight_surface = self.font_label.render(weight_text, True, text_color)
             
             # Fundo semi-transparente para legibilidade
             text_rect = weight_surface.get_rect(center=(mid_x, mid_y))
@@ -919,7 +1004,9 @@ class SPADETrafficSimulation:
         y_offset += 30
         
         controls = [
-            "ESPACO: Pausar/Continuar",
+            "P: Pausar/Continuar",
+            "ESPACO: Disrupção (bloqueios)",
+            "F11: Tela cheia",
             "ESC: Sair",
             "+/-: Velocidade",
         ]
@@ -930,6 +1017,29 @@ class SPADETrafficSimulation:
             y_offset += 20
         
         y_offset += 20
+        
+        # Estado de disrupção
+        if self.disruptor_agent:
+            disruption_title = self.font_stats.render("Estado de Disrupção", True, COLOR_TEXT)
+            self.screen.blit(disruption_title, (sidebar_x + 20, y_offset))
+            y_offset += 30
+            
+            if self.disruptor_agent.disruption_active:
+                status_text = "ATIVO"
+                status_color = (255, 100, 100)
+                blocked_text = f"Vias bloqueadas: {len(self.disruptor_agent.blocked_edges)}"
+            else:
+                status_text = "INATIVO"
+                status_color = (100, 255, 100)
+                blocked_text = "Todas as vias livres"
+            
+            status_surface = self.font_label.render(f"Status: {status_text}", True, status_color)
+            self.screen.blit(status_surface, (sidebar_x + 20, y_offset))
+            y_offset += 20
+            
+            blocked_surface = self.font_label.render(blocked_text, True, COLOR_TEXT)
+            self.screen.blit(blocked_surface, (sidebar_x + 20, y_offset))
+            y_offset += 30
         
         # Legenda
         legend_title = self.font_stats.render("Legenda", True, COLOR_TEXT)
@@ -985,10 +1095,23 @@ class SPADETrafficSimulation:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running_main_loop = False
+                elif event.type == pygame.VIDEORESIZE:
+                    # Atualizar viewport quando a janela é redimensionada
+                    if not self.is_fullscreen:
+                        self.windowed_size = (event.w, event.h)
+                        self.viewport = self._calculate_viewport()
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
                         running_main_loop = False
+                    elif event.key == pygame.K_F11:
+                        # F11 para alternar fullscreen
+                        self.toggle_fullscreen()
                     elif event.key == pygame.K_SPACE:
+                        # Toggle disrupção (ativar/desativar bloqueios)
+                        if self.disruptor_agent:
+                            self.disruptor_agent.toggle_disruption()
+                    elif event.key == pygame.K_p:
+                        # Tecla P para pause (alternativa ao ESPAÇO que agora é disruptor)
                         self.toggle_pause()
                     elif event.key == pygame.K_PLUS or event.key == pygame.K_EQUALS:
                         self.update_speed_multiplier(0.2)

@@ -66,6 +66,7 @@ class VehicleAgent(Agent):
         self.traffic_reports = {}  # Cache local de reportes de trafego
         self.traffic_lights = {}   # Cache local de semaforos
         self.nearby_ambulances = {}  # Cache de ambulâncias próximas {ambulance_id: {'x': x, 'y': y, 'timestamp': time}}
+        self.blocked_edges = set()  # Arestas bloqueadas pelo disruptor
         
     async def setup(self):
         """Configuracao inicial do agente"""
@@ -128,6 +129,8 @@ class VehicleAgent(Agent):
         f_score = {node: float('inf') for node in self.graph}
         f_score[start] = heuristic(start, goal)
         
+        blocked_count = 0  # Contador de arestas bloqueadas
+        
         while open_set:
             current = heapq.heappop(open_set)[1]
             
@@ -139,15 +142,47 @@ class VehicleAgent(Agent):
                 path.append(start)
                 path = path[::-1]
                 
+                # 🚧 VALIDAÇÃO CRÍTICA: Verificar se a rota contém arestas bloqueadas
+                route_is_valid = True
+                for i in range(len(path) - 1):
+                    node_from = path[i]
+                    node_to = path[i + 1]
+                    
+                    # Verificar se esta aresta está bloqueada
+                    if node_from in self.graph:
+                        for neighbor, edge_id in self.graph[node_from]:
+                            if neighbor == node_to and edge_id in self.blocked_edges:
+                                print(f"❌ A*: {self.vehicle_id} - ROTA INVÁLIDA! Contém aresta bloqueada {edge_id} ({node_from}->{node_to})")
+                                route_is_valid = False
+                                break
+                    if not route_is_valid:
+                        break
+                
+                # Se a rota contém bloqueios, retornar vazio (forçar novo cálculo)
+                if not route_is_valid:
+                    print(f"⛔ A*: {self.vehicle_id} - Rota rejeitada por conter vias bloqueadas")
+                    return []
+                
                 # Calcular custo total da rota (soma dos pesos das arestas)
                 if len(path) > 0:
                     self.route_total_cost = g_score[goal]
                     self.route_cost_traveled = 0
                     self.edge_start_node = start
                 
+                if blocked_count > 0:
+                    print(f"🛤️  {self.vehicle_id}: Rota calculada evitando {blocked_count} vias bloqueadas")
+                
                 return path
             
             for neighbor, edge_id in self.graph.get(current, []):
+                # 🚧 VERIFICAR SE A VIA ESTÁ BLOQUEADA - IGNORAR COMPLETAMENTE
+                if edge_id in self.blocked_edges:
+                    blocked_count += 1
+                    # Log para debug (apenas primeiras vezes)
+                    if blocked_count <= 3:
+                        print(f"🚫 A*: {self.vehicle_id} pulou aresta bloqueada {edge_id} ({current}->{neighbor})")
+                    continue  # Pular esta aresta completamente
+                
                 # Peso base da aresta
                 edge_weight = self.edges.get(edge_id, {}).get('weight', 100.0)
                 
@@ -172,6 +207,9 @@ class VehicleAgent(Agent):
                     f_score[neighbor] = tentative_g_score + heuristic(neighbor, goal)
                     heapq.heappush(open_set, (f_score[neighbor], neighbor))
         
+        # Se chegou aqui, não há caminho disponível
+        if blocked_count > 0:
+            print(f"⛔ {self.vehicle_id}: Sem rota disponível! Bloqueios impediram acesso ao destino ({blocked_count} vias bloqueadas)")
         return []
     
     class MoveBehaviour(PeriodicBehaviour):
@@ -191,6 +229,37 @@ class VehicleAgent(Agent):
                 if self.agent.route:
                     self.agent.route_index = 0
                     self.agent.target_node = self.agent.route[0] if len(self.agent.route) > 0 else None
+                else:
+                    # Não há rota disponível (possivelmente devido a bloqueios)
+                    # Para veículos normais: escolher novo destino aleatório
+                    if self.agent.vehicle_id != 'v0' and self.agent.vehicle_type != 'ambulance':
+                        nodes_list = list(self.agent.nodes.keys())
+                        available_nodes = [n for n in nodes_list if n != self.agent.current_node]
+                        
+                        if available_nodes:  # Verificar se há nós disponíveis
+                            new_destination = random.choice(available_nodes)
+                            print(f"🔄 {self.agent.vehicle_id}: Sem rota para {self.agent.end_node}. Tentando novo destino: {new_destination}")
+                            self.agent.end_node = new_destination
+                        else:
+                            print(f"⚠️ {self.agent.vehicle_id}: Sem destinos alternativos disponíveis!")
+                    # Journey vehicle e ambulâncias: aguardar (bloqueios podem ser temporários)
+                    return
+            
+            # 🚧 VERIFICAR SE A ARESTA ATUAL ESTÁ BLOQUEADA
+            if self.agent.route and self.agent.route_index < len(self.agent.route):
+                current = self.agent.current_node
+                next_node = self.agent.route[self.agent.route_index]
+                
+                # Encontrar o edge_id entre current e next_node
+                if current in self.agent.graph:
+                    for neighbor, edge_id in self.agent.graph[current]:
+                        if neighbor == next_node:
+                            # Verificar se está bloqueada
+                            if edge_id in self.agent.blocked_edges:
+                                print(f"🚫 {self.agent.vehicle_id}: via atual {current}->{next_node} (edge {edge_id}) está BLOQUEADA! Recalculando...")
+                                self.agent.route = []  # Forçar recálculo
+                                return
+                            break
             
             # Mover ao longo da rota
             if self.agent.route and self.agent.route_index < len(self.agent.route):
@@ -306,6 +375,21 @@ class VehicleAgent(Agent):
                     self.agent.y = target_y
                     self.agent.route_index += 1
                     
+                    # 🚧 VERIFICAÇÃO CRÍTICA: Antes de avançar, verificar se a PRÓXIMA aresta está bloqueada
+                    if self.agent.route_index < len(self.agent.route):
+                        next_target = self.agent.route[self.agent.route_index]
+                        
+                        # Verificar se a aresta entre current_node e next_target está bloqueada
+                        if target_node in self.agent.graph:
+                            for neighbor, edge_id in self.agent.graph[target_node]:
+                                if neighbor == next_target:
+                                    if edge_id in self.agent.blocked_edges:
+                                        print(f"⛔ {self.agent.vehicle_id}: PRÓXIMA via {target_node}->{next_target} (edge {edge_id}) está BLOQUEADA!")
+                                        print(f"⛔ {self.agent.vehicle_id}: Parando no nó {target_node} e recalculando...")
+                                        self.agent.route = []  # Forçar recálculo completo
+                                        return
+                                    break
+                    
                     # Acumular custo da aresta percorrida (para journey vehicle)
                     if self.agent.vehicle_id == 'v0' and prev_node and self.agent.edge_start_node:
                         # Encontrar a aresta entre edge_start_node e current_node
@@ -358,7 +442,7 @@ class VehicleAgent(Agent):
         """Behaviour para receber mensagens"""
         
         async def run(self):
-            msg = await self.receive(timeout=10)
+            msg = await self.receive(timeout=0.1)  # Timeout reduzido para não bloquear
             if msg:
                 try:
                     data = json.loads(msg.body)
@@ -417,9 +501,6 @@ class VehicleAgent(Agent):
                                 'orientation': orientation,
                                 'node_id': node_id
                             }
-                            
-                            # Debug: mostrar recepção com orientação
-                            # print(f"🚦 {self.agent.vehicle_id} recebeu: {node_id}_{orientation[0].upper()} = {data.get('state')}")
                     
                     elif msg_type == 'recalculate_route':
                         # Forcar recalculo de rota
@@ -436,9 +517,26 @@ class VehicleAgent(Agent):
                                 'speed': data.get('speed', 0),
                                 'timestamp': time.time()
                             }
+                    
+                    elif msg_type == 'blocked_edges_update':
+                        # 🚧 RECEBER ATUALIZAÇÃO DE VIAS BLOQUEADAS
+                        blocked = data.get('blocked_edges', [])
+                        old_count = len(self.agent.blocked_edges)
+                        self.agent.blocked_edges = set(blocked)
+                        
+                        print(f"\n🚧 {self.agent.vehicle_id}: Atualização de bloqueios recebida")
+                        print(f"🚧 {self.agent.vehicle_id}: Antes: {old_count} bloqueios")
+                        print(f"🚧 {self.agent.vehicle_id}: Agora: {len(blocked)} bloqueios")
+                        print(f"🚧 {self.agent.vehicle_id}: Bloqueios: {self.agent.blocked_edges}")
+                        print(f"🚧 {self.agent.vehicle_id}: Forçando recálculo de rota...\n")
+                        
+                        # Forçar recálculo de rota
+                        self.agent.route = []  # Força recálculo na próxima iteração
                         
                 except json.JSONDecodeError:
-                    pass
+                    print(f"❌ Erro ao decodificar JSON: {msg.body}")
+                except Exception as e:
+                    print(f"❌ Erro ao processar mensagem no veículo {self.agent.vehicle_id}: {e}")
     
     class ReportTrafficBehaviour(PeriodicBehaviour):
         """Behaviour para reportar condicoes de trafego"""
@@ -473,36 +571,19 @@ class VehicleAgent(Agent):
         """Behaviour para ambulâncias enviarem broadcast de posição (PRIORIDADE)"""
         
         async def run(self):
-            """Envia broadcast de posição para todos os veículos"""
-            # Broadcast para todos os 11 carros normais (vehicle_0 a vehicle_10)
-            for i in range(11):
-                msg = Message(to=f"vehicle_{i}@localhost")
-                msg.set_metadata("performative", "inform")
-                msg.body = json.dumps({
-                    "type": "ambulance_position",
-                    "ambulance_id": self.agent.vehicle_id,
-                    "x": self.agent.x,
-                    "y": self.agent.y,
-                    "current_node": self.agent.current_node,
-                    "speed": self.agent.speed
-                })
-                await self.send(msg)
-            
-            # Broadcast para as outras ambulâncias também (AMB0-AMB3)
-            for i in range(4):
-                amb_jid = f"amb_{i}@localhost"
-                if amb_jid != str(self.agent.jid):  # Não enviar para si mesmo
-                    msg = Message(to=amb_jid)
-                    msg.set_metadata("performative", "inform")
-                    msg.body = json.dumps({
-                        "type": "ambulance_position",
-                        "ambulance_id": self.agent.vehicle_id,
-                        "x": self.agent.x,
-                        "y": self.agent.y,
-                        "current_node": self.agent.current_node,
-                        "speed": self.agent.speed
-                    })
-                    await self.send(msg)
+            """Envia broadcast de posição via coordenador"""
+            # Enviar para coordenador que vai distribuir
+            msg = Message(to="coordinator@localhost")
+            msg.set_metadata("performative", "inform")
+            msg.body = json.dumps({
+                "type": "ambulance_broadcast",
+                "ambulance_id": self.agent.vehicle_id,
+                "x": self.agent.x,
+                "y": self.agent.y,
+                "current_node": self.agent.current_node,
+                "speed": self.agent.speed
+            })
+            await self.send(msg)
 
 
 class TrafficLightAgent(Agent):
@@ -601,33 +682,19 @@ class TrafficLightAgent(Agent):
                 # Atualiza estado
                 self.agent.state = next_state
                 
-                # BROADCAST DIRETO para TODOS os veículos quando muda de estado
+                # BROADCAST via coordenador quando muda de estado
                 if old_state != self.agent.state:
-                    # Enviar para todos os 11 carros (vehicle_0 a vehicle_10)
-                    for i in range(11):
-                        msg = Message(to=f"vehicle_{i}@localhost")
-                        msg.set_metadata("performative", "inform")
-                        msg.body = json.dumps({
-                            "type": "traffic_light_update",
-                            "node_id": self.agent.node_id,
-                            "state": self.agent.state,
-                            "position": {"x": self.agent.x, "y": self.agent.y},
-                            "orientation": self.agent.orientation
-                        })
-                        await self.send(msg)
-                    
-                    # Enviar para as 4 ambulâncias AMB (amb_0 a amb_3)
-                    for i in range(4):
-                        msg = Message(to=f"amb_{i}@localhost")
-                        msg.set_metadata("performative", "inform")
-                        msg.body = json.dumps({
-                            "type": "traffic_light_update",
-                            "node_id": self.agent.node_id,
-                            "state": self.agent.state,
-                            "position": {"x": self.agent.x, "y": self.agent.y},
-                            "orientation": self.agent.orientation
-                        })
-                        await self.send(msg)
+                    # Enviar para o coordenador que vai distribuir para todos
+                    msg = Message(to="coordinator@localhost")
+                    msg.set_metadata("performative", "inform")
+                    msg.body = json.dumps({
+                        "type": "traffic_light_broadcast",
+                        "node_id": self.agent.node_id,
+                        "state": self.agent.state,
+                        "position": {"x": self.agent.x, "y": self.agent.y},
+                        "orientation": self.agent.orientation
+                    })
+                    await self.send(msg)
                     
                     # NOTIFICA o semáforo par sobre mudança de estado
                     if self.agent.paired_light:
@@ -693,6 +760,7 @@ class CoordinatorAgent(Agent):
         self.traffic_lights = {}  # {node_id: traffic_light_agent_reference}
         self.traffic_reports = {}  # Cache de reportes
         self.light_states = {}  # Cache de estados dos semaforos
+        self.blocked_edges = set()  # Conjunto de arestas bloqueadas pelo disruptor
         self.statistics = {
             'total_arrivals': 0,
             'avg_travel_time': 0,
@@ -748,6 +816,55 @@ class CoordinatorAgent(Agent):
                                 'timer': data.get('timer')
                             }
                     
+                    elif msg_type == 'traffic_light_broadcast':
+                        # Receber broadcast de semáforo e distribuir para todos os veículos
+                        for vehicle_jid in self.agent.vehicles.keys():
+                            msg_reply = Message(to=vehicle_jid)
+                            msg_reply.set_metadata("performative", "inform")
+                            msg_reply.body = json.dumps({
+                                "type": "traffic_light_update",
+                                "node_id": data.get('node_id'),
+                                "state": data.get('state'),
+                                "position": data.get('position'),
+                                "orientation": data.get('orientation')
+                            })
+                            await self.send(msg_reply)
+                    
+                    elif msg_type == 'ambulance_broadcast':
+                        # Receber broadcast de ambulância e distribuir para todos os veículos
+                        for vehicle_jid in self.agent.vehicles.keys():
+                            msg_reply = Message(to=vehicle_jid)
+                            msg_reply.set_metadata("performative", "inform")
+                            msg_reply.body = json.dumps({
+                                "type": "ambulance_position",
+                                "ambulance_id": data.get('ambulance_id'),
+                                "x": data.get('x'),
+                                "y": data.get('y'),
+                                "current_node": data.get('current_node'),
+                                "speed": data.get('speed')
+                            })
+                            await self.send(msg_reply)
+                    
+                    elif msg_type == 'road_disruption':
+                        # Receber notificação de vias bloqueadas
+                        blocked = data.get('blocked_edges', [])
+                        active = data.get('active', False)
+                        
+                        print(f"\n" + "="*80)
+                        print(f"📡 COORDENADOR: Recebeu notificação de disrupção")
+                        print(f"📡 COORDENADOR: {len(blocked)} vias bloqueadas, ativo={active}")
+                        print(f"📡 COORDENADOR: Vias: {blocked}")
+                        print(f"📡 COORDENADOR: {len(self.agent.vehicles)} veículos registrados")
+                        print("="*80 + "\n")
+                        
+                        if active:
+                            self.agent.blocked_edges = set(blocked)
+                        else:
+                            self.agent.blocked_edges = set()
+                        
+                        # Broadcast para todos os veículos (CORRIGIDO: passar blocked como argumento)
+                        await self.agent.broadcast_blocked_edges(blocked)
+                    
                     elif msg_type == 'arrival':
                         # Processar chegada de veiculo
                         vehicle_id = data.get('vehicle_id')
@@ -769,6 +886,38 @@ class CoordinatorAgent(Agent):
                 except json.JSONDecodeError:
                     pass
     
+    async def broadcast_blocked_edges(self, blocked_edges):
+        """Envia informação de bloqueios para todos os veículos usando behaviour"""
+        print(f"\n📢 COORDENADOR: Iniciando broadcast de {len(blocked_edges)} bloqueios")
+        print(f"📢 COORDENADOR: Para {len(self.vehicles)} veículos: {list(self.vehicles.keys())}")
+        
+        # Criar e adicionar behaviour para enviar mensagens
+        behaviour = self.BroadcastBlockedEdgesBehaviour(
+            list(self.vehicles.keys()), 
+            blocked_edges
+        )
+        self.add_behaviour(behaviour)
+    
+    class BroadcastBlockedEdgesBehaviour(OneShotBehaviour):
+        """Behaviour one-shot para broadcast de bloqueios"""
+        
+        def __init__(self, vehicle_jids, blocked_edges):
+            super().__init__()
+            self.vehicle_jids = vehicle_jids
+            self.blocked_edges = blocked_edges
+        
+        async def run(self):
+            for vehicle_jid in self.vehicle_jids:
+                msg = Message(to=vehicle_jid)
+                msg.set_metadata("performative", "inform")
+                msg.body = json.dumps({
+                    "type": "blocked_edges_update",
+                    "blocked_edges": self.blocked_edges
+                })
+                await self.send(msg)
+                print(f"📤 COORDENADOR: Mensagem enviada para {vehicle_jid}")
+            print(f"📡 Broadcast de bloqueios enviado para {len(self.vehicle_jids)} veículos")
+    
     class RequestHandlerBehaviour(CyclicBehaviour):
         """Behaviour para responder a requisicoes"""
         
@@ -782,7 +931,12 @@ class CoordinatorAgent(Agent):
                     if msg_type == 'request_network':
                         # Enviar dados da rede para veiculo
                         vehicle_id = data.get('vehicle_id')
-                        reply = Message(to=str(msg.sender))
+                        vehicle_jid = str(msg.sender)
+                        
+                        # Registrar veículo
+                        self.agent.vehicles[vehicle_jid] = vehicle_id
+                        
+                        reply = Message(to=vehicle_jid)
                         reply.set_metadata("performative", "inform")
                         reply.body = json.dumps({
                             "type": "network_data",
@@ -791,7 +945,7 @@ class CoordinatorAgent(Agent):
                             "graph": self.agent.graph
                         })
                         await self.send(reply)
-                        print(f"Enviando dados da rede para {vehicle_id}")
+                        print(f"Enviando dados da rede para {vehicle_id} e registrando")
                     
                     elif msg_type == 'request_position':
                         # Enviar posicao do no para semaforo
@@ -811,3 +965,163 @@ class CoordinatorAgent(Agent):
                     
                 except json.JSONDecodeError:
                     pass
+
+
+class DisruptorAgent(Agent):
+    """Agente Disruptor - Gera bloqueios aleatórios em vias"""
+    
+    def __init__(self, jid, password, edges):
+        super().__init__(jid, password)
+        self.edges = edges  # Lista de todas as arestas disponíveis
+        self.blocked_edges = set()  # Conjunto de IDs de arestas bloqueadas
+        self.coordinator_jid: Optional[str] = None
+        self.disruption_active = False
+        
+    async def setup(self):
+        """Configuração inicial do disruptor"""
+        print("DisruptorAgent iniciado")
+        
+        # Armazenar referência ao event loop
+        self.loop = asyncio.get_event_loop()
+        
+        # Behaviour para receber comandos
+        receive_behaviour = self.ReceiveCommandsBehaviour()
+        self.add_behaviour(receive_behaviour)
+    
+    def activate_disruption(self):
+        """Ativa disrupção bloqueando 6 vias aleatórias (evitando vias críticas do perímetro)"""
+        if not self.disruption_active:
+            # Identificar vias do perímetro (menos críticas para bloquear)
+            # Vias do perímetro conectam nós (0,0), (0,5), (5,0), (5,5)
+            perimeter_nodes = {'0_0', '0_5', '5_0', '5_5'}
+            
+            # Filtrar vias que NÃO são do perímetro externo
+            available_edges = []
+            for edge_id, edge_data in self.edges.items():
+                from_node = edge_data['from']
+                to_node = edge_data['to']
+                
+                # Evitar bloquear vias que conectam diretamente os 4 cantos
+                is_perimeter = (from_node in perimeter_nodes and to_node in perimeter_nodes)
+                
+                if not is_perimeter:
+                    available_edges.append(edge_id)
+            
+            # Selecionar 6 arestas aleatórias das disponíveis
+            if len(available_edges) >= 6:
+                self.blocked_edges = set(random.sample(available_edges, 6))
+                self.disruption_active = True
+                
+                # Mostrar quais vias foram bloqueadas
+                blocked_info = []
+                for edge_id in self.blocked_edges:
+                    edge_data = self.edges[edge_id]
+                    blocked_info.append(f"{edge_data['from']} -> {edge_data['to']}")
+                
+                print(f"\n" + "="*80)
+                print(f"🚧 DISRUPTOR: Disrupção ATIVADA!")
+                print(f"🚧 DISRUPTOR: {len(self.blocked_edges)} vias bloqueadas:")
+                for info in blocked_info:
+                    print(f"   🚧 {info}")
+                print(f"🚧 DISRUPTOR: Preparando notificação para {self.coordinator_jid}")
+                print("="*80 + "\n")
+                
+                # Notificar coordenador de forma segura
+                self._schedule_notification()
+                return True
+            else:
+                print(f"⚠️ DISRUPTOR: Não há vias suficientes disponíveis ({len(available_edges)} < 6)")
+        return False
+    
+    def deactivate_disruption(self):
+        """Desativa disrupção liberando todas as vias"""
+        if self.disruption_active:
+            self.blocked_edges = set()
+            self.disruption_active = False
+            print(f"\n" + "="*80)
+            print(f"✅ DISRUPTOR: Disrupção DESATIVADA!")
+            print(f"✅ DISRUPTOR: Todas as vias liberadas")
+            print(f"✅ DISRUPTOR: Notificando {self.coordinator_jid}")
+            print("="*80 + "\n")
+            
+            # Notificar coordenador de forma segura
+            self._schedule_notification()
+            return True
+        return False
+    
+    def _schedule_notification(self):
+        """Agenda notificação de forma segura (funciona de qualquer thread)"""
+        try:
+            # Tentar obter o loop do agente
+            loop = self.loop
+            if loop and loop.is_running():
+                # Usar call_soon_threadsafe para agendar a coroutine
+                asyncio.run_coroutine_threadsafe(self.notify_coordinator(), loop)
+        except Exception as e:
+            print(f"⚠️ Erro ao agendar notificação: {e}")
+    
+    def toggle_disruption(self):
+        """Alterna entre ativar/desativar disrupção"""
+        if self.disruption_active:
+            return self.deactivate_disruption()
+        else:
+            return self.activate_disruption()
+    
+    async def notify_coordinator(self):
+        """Notifica o coordenador sobre vias bloqueadas"""
+        if not self.is_alive():
+            return
+            
+        if self.coordinator_jid:
+            try:
+                msg = Message(to=self.coordinator_jid)
+                msg.set_metadata("performative", "inform")
+                msg.body = json.dumps({
+                    "type": "road_disruption",
+                    "blocked_edges": list(self.blocked_edges),
+                    "active": self.disruption_active
+                })
+                
+                # Criar behaviour temporário para enviar mensagem
+                behaviour = self.SendNotificationBehaviour(msg)
+                self.add_behaviour(behaviour)
+                
+                print(f"📤 DISRUPTOR: Notificação agendada para coordenador {self.coordinator_jid}")
+                print(f"📤 DISRUPTOR: Dados: {len(self.blocked_edges)} bloqueios, ativo={self.disruption_active}")
+            except Exception as e:
+                print(f"❌ Erro ao enviar notificação: {e}")
+    
+    class SendNotificationBehaviour(OneShotBehaviour):
+        """Behaviour one-shot para enviar notificação"""
+        
+        def __init__(self, message):
+            super().__init__()
+            self.message = message
+        
+        async def run(self):
+            try:
+                await self.send(self.message)
+                print(f"✅ DISRUPTOR: Mensagem ENVIADA com sucesso para {self.message.to}")
+            except Exception as e:
+                print(f"❌ DISRUPTOR: Erro ao enviar mensagem: {e}")
+    
+    class ReceiveCommandsBehaviour(CyclicBehaviour):
+        """Behaviour para receber comandos externos"""
+        
+        async def run(self):
+            msg = await self.receive(timeout=1)
+            if msg:
+                try:
+                    data = json.loads(msg.body)
+                    cmd = data.get('command')
+                    
+                    if cmd == 'activate':
+                        self.agent.activate_disruption()
+                    elif cmd == 'deactivate':
+                        self.agent.deactivate_disruption()
+                    elif cmd == 'toggle':
+                        self.agent.toggle_disruption()
+                        
+                except json.JSONDecodeError:
+                    pass
+            await asyncio.sleep(0.1)
