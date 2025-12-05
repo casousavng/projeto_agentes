@@ -18,6 +18,9 @@ aiohttp>=3.8.0
 # Para logging e debugging
 coloredlogs>=15.0
 
+# Dashboard de métricas (opcional, mas recomendado)
+rich>=13.0.0
+
 # Flask Web Framework (compatível com SPADE 4.1.0 e Jinja2 3.0.3)
 flask==2.0.3
 flask-socketio>=5.1.0

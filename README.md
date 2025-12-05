@@ -4,7 +4,7 @@
 ![SPADE](https://img.shields.io/badge/SPADE-4.1.0-green.svg)
 ![Pygame](https://img.shields.io/badge/Pygame-2.6.1-orange.svg)
 
-Sistema avançado de simulação de tráfego urbano usando **agentes inteligentes SPADE**, comunicação **XMPP via Prosody** e visualização em tempo real com **Pygame**.
+Sistema avançado de simulação de tráfego urbano usando **agentes inteligentes SPADE**, comunicação **XMPP via Prosody**, visualização em tempo real com **Pygame** e **dashboard LIVE via XMPP** para métricas.
 
 ---
 
@@ -27,6 +27,7 @@ Este projeto implementa uma simulação completa de tráfego onde **37 agentes a
 ✅ **Coordenação de Semáforos**: Pares H+V sincronizados (nunca ambos verdes)  
 ✅ **Grid 6×6**: 36 nós, 120 arestas direcionais  
 ✅ **Visualização Pygame**: Interface em tempo real com controles interativos  
+✅ **Dashboard LIVE (XMPP)**: Tabela unificada com métricas de todos os 15 veículos (latência, custos, penalizações)
 ✅ **Fullscreen**: Suporte F11 para tela cheia  
 
 ---
@@ -79,6 +80,8 @@ Este projeto implementa uma simulação completa de tráfego onde **37 agentes a
 projeto_agentes/
 │
 ├── 🎮 live_dynamic_spade.py        # Simulação principal
+├── 📊 dashboard_live.py            # Dashboard LIVE via XMPP (sem CSV)
+├── 🚀 start_simulation.sh          # Script único para iniciar tudo
 │
 ├── 🤖 agents/
 │   ├── __init__.py
@@ -86,11 +89,23 @@ projeto_agentes/
 │
 ├── 🛠️ scripts/
 │   ├── setup_prosody.sh           # Configurar Prosody Docker
-│   └── register_10_paired_lights.sh # Registrar 20 semáforos
+│   ├── register_10_paired_lights.sh # Registrar 20 semáforos
+│   └── collect_metrics.py         # Coletor de métricas (usado pelos agentes)
 │
 ├── 📋 requirements.txt            # Dependências Python
 ├── 📖 README.md                   # Esta documentação
+├── 📊 DASHBOARD_README.md         # Documentação do dashboard
 └── 🗂️ venv/                       # Ambiente virtual
+
+---
+
+## 🆕 O que foi feito recentemente
+
+- Migramos o dashboard de CSV para XMPP direto (`dashboard_live.py`), eliminando latência de I/O.
+- Corrigimos paragens indevidas: veículos só param junto ao nó (cruzamento), não no meio da aresta.
+- Cedência de passagem às ambulâncias ocorre apenas quando o veículo está próximo ao próximo nó e a ambulância próxima do cruzamento.
+- `CoordinatorAgent` passou a fazer broadcast dos `traffic_report` para todos os veículos.
+- Tabela fixa no dashboard garantindo visibilidade de todos os 15 veículos, mesmo sem métricas iniciais.
 ```
 
 ---
@@ -151,11 +166,47 @@ Registra:
 
 ### 5️⃣ Executar Simulação
 
+#### Opção A: Iniciar tudo automaticamente (recomendado) 🚀
+
 ```bash
 # ⚠️ IMPORTANTE: SEMPRE ativar venv antes de executar!
 source venv/bin/activate
 
-# Executar simulação principal
+# Script único que inicia simulação + dashboard
+./start_simulation.sh
+```
+
+Este script irá:
+- ✅ Verificar se Prosody está rodando (inicia se necessário)
+- ✅ Verificar se agentes estão registrados (regista se necessário)
+- ✅ Abrir dashboard de métricas em novo terminal
+- ✅ Iniciar simulação principal no terminal atual
+
+#### Opção B: Iniciar manualmente em terminais separados
+
+Terminal 1 (simulação):
+```bash
+source venv/bin/activate
+python live_dynamic_spade.py
+```
+
+Terminal 2 (dashboard LIVE via XMPP):
+```bash
+source venv/bin/activate
+python dashboard_live.py --refresh 1.0
+```
+
+#### Só o dashboard LIVE
+```bash
+source venv/bin/activate
+./start_dashboard_live.sh
+# ou
+python dashboard_live.py --refresh 1.0
+```
+
+#### Só a simulação
+```bash
+source venv/bin/activate
 python live_dynamic_spade.py
 ```
 
@@ -171,6 +222,12 @@ python live_dynamic_spade.py
 | **ESC** | 🚪 Sair |
 
 ---
+
+## ℹ️ Notas Operacionais
+
+- Penalização de tráfego depende de tempos de espera reais; em cenários fluidos os valores podem permanecer 0.
+- Para observar recálculos e latências, ative disrupções (ESPAÇO) ou gere congestionamentos.
+- Certifique-se de que `dashboard@localhost` está registado no Prosody (use `scripts/setup_prosody.sh`).
 
 ## 🎨 Interface Pygame
 
@@ -644,15 +701,34 @@ Simulação principal com Pygame:
 
 ## 🎉 Pronto para Usar!
 
+### Método Rápido (Recomendado) 🚀
+
+```bash
+# 1. Ative o ambiente virtual
+source venv/bin/activate
+
+# 2. Execute o script único
+./start_simulation.sh
+```
+
+O script irá:
+- ✅ Verificar e iniciar Prosody se necessário
+- ✅ Registar agentes se necessário  
+- ✅ Abrir dashboard de métricas em novo terminal
+- ✅ Iniciar simulação principal
+
+### Método Manual (Passo a Passo)
+
 Teste o sistema completo:
 
 1. **Inicie Prosody**: `./scripts/setup_prosody.sh`
 2. **Registre agentes**: `./scripts/register_10_paired_lights.sh`
 3. **Ative venv**: `source venv/bin/activate` ⚠️ **IMPORTANTE!**
-4. **Execute simulação**: `python live_dynamic_spade.py`
-5. **Pressione ESPAÇO**: Para ativar bloqueios e ver veículos recalculando rotas
-6. **Pressione F11**: Para tela cheia
-7. **Use +/-**: Para ajustar velocidade
+4. **Terminal 1 - Simulação**: `python live_dynamic_spade.py`
+5. **Terminal 2 - Dashboard**: `python dashboard_metrics.py`
+6. **Pressione ESPAÇO**: Para ativar bloqueios e ver veículos recalculando rotas
+7. **Pressione F11**: Para tela cheia
+8. **Use +/-**: Para ajustar velocidade
 
 Divirta-se explorando o sistema multiagente! 🚗💨🚦
 

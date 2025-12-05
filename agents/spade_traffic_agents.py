@@ -322,31 +322,87 @@ class VehicleAgent(Agent):
             
             # Se nao tem rota, calcular
             if not self.agent.route:
+                # Evitar recálculo excessivo - adicionar delay entre tentativas
+                if not hasattr(self.agent, '_last_route_attempt'):
+                    self.agent._last_route_attempt = 0
+                
+                current_time = time.time()
+                # Só tentar recalcular a cada 0.5 segundos para evitar spam
+                if current_time - self.agent._last_route_attempt < 0.5:
+                    return
+                
+                self.agent._last_route_attempt = current_time
+                
+                # Medir latência do A*
+                start_astar = time.perf_counter()
                 self.agent.route = self.agent.calculate_route_astar(
                     self.agent.current_node,
                     self.agent.end_node
                 )
+                end_astar = time.perf_counter()
+                latency_ms = (end_astar - start_astar) * 1000
+                
                 if self.agent.route:
                     self.agent.route_index = 0
                     self.agent.target_node = self.agent.route[0] if len(self.agent.route) > 0 else None
+                    
+                    # Enviar métricas após recálculo bem-sucedido
+                    if self.agent.metrics:
+                        try:
+                            new_cost = getattr(self.agent, 'route_total_cost', 0.0)
+                            base_cost = getattr(self.agent, 'route_base_cost', 0.0)
+                            sem_penalty = getattr(self.agent, 'route_semaphore_penalty_cost', 0.0)
+                            traffic_penalty = getattr(self.agent, 'route_traffic_penalty_cost', 0.0)
+                            
+                            # Log CSV
+                            original_cost = getattr(self.agent, '_last_route_cost', new_cost)
+                            self.agent.metrics.log_route_costs(self.agent.vehicle_id, original_cost, new_cost)
+                            self.agent.metrics.log_semaphore_penalty(self.agent.vehicle_id, base_cost, sem_penalty)
+                            self.agent.metrics.log_traffic_penalty(self.agent.vehicle_id, base_cost, traffic_penalty)
+                            self.agent.metrics.flush()
+                            
+                            # Enviar latência do A*
+                            await self._send_latency_to_dashboard(latency_ms)
+                            
+                            # Enviar via XMPP para dashboard
+                            await self._send_metrics_to_dashboard(original_cost, new_cost, sem_penalty, traffic_penalty)
+                            
+                            # Salvar custo atual para próxima comparação
+                            self.agent._last_route_cost = new_cost
+                        except Exception as e:
+                            print(f"❌ {self.agent.vehicle_id}: Erro ao enviar métricas: {e}")
+                    
+                    # Reset contador de falhas
+                    if hasattr(self.agent, '_route_fail_count'):
+                        self.agent._route_fail_count = 0
                 else:
                     # Não há rota disponível (possivelmente devido a bloqueios)
-                    # Para veículos normais: escolher novo destino aleatório
-                    if self.agent.vehicle_id != 'v0' and self.agent.vehicle_type != 'ambulance':
-                        nodes_list = list(self.agent.nodes.keys())
-                        available_nodes = [n for n in nodes_list if n != self.agent.current_node]
+                    # Contar falhas consecutivas
+                    if not hasattr(self.agent, '_route_fail_count'):
+                        self.agent._route_fail_count = 0
+                    self.agent._route_fail_count += 1
+                    
+                    # Após 5 falhas consecutivas, tentar destino alternativo
+                    if self.agent._route_fail_count >= 5:
+                        print(f"⚠️ {self.agent.vehicle_id}: {self.agent._route_fail_count} tentativas falhadas para {self.agent.end_node}")
                         
-                        if available_nodes:  # Verificar se há nós disponíveis
-                            new_destination = random.choice(available_nodes)
-                            print(f"🔄 {self.agent.vehicle_id}: Sem rota para {self.agent.end_node}. Tentando novo destino: {new_destination}")
-                            self.agent.end_node = new_destination
-                            # Tentar calcular rota imediatamente para o novo destino
-                            return
+                        # Para veículos normais: escolher novo destino aleatório
+                        if self.agent.vehicle_id != 'v0' and self.agent.vehicle_type != 'ambulance':
+                            nodes_list = list(self.agent.nodes.keys())
+                            available_nodes = [n for n in nodes_list if n != self.agent.current_node]
+                            
+                            if available_nodes:  # Verificar se há nós disponíveis
+                                new_destination = random.choice(available_nodes)
+                                print(f"🔄 {self.agent.vehicle_id}: Mudando destino de {self.agent.end_node} para {new_destination}")
+                                self.agent.end_node = new_destination
+                                self.agent._route_fail_count = 0
+                                # Tentar calcular rota imediatamente para o novo destino
+                                return
+                            else:
+                                print(f"⚠️ {self.agent.vehicle_id}: Sem destinos alternativos disponíveis!")
                         else:
-                            print(f"⚠️ {self.agent.vehicle_id}: Sem destinos alternativos disponíveis!")
-                    else:
-                        # Journey vehicle e ambulâncias: aguardar e tentar novamente
-                        if self.agent.vehicle_id == 'v0' or self.agent.vehicle_type == 'ambulance':
+                            # Journey vehicle e ambulâncias: aguardar e resetar contador
+                            self.agent._route_fail_count = 0
                             # Exibir mensagem apenas a cada 60 frames para não poluir o console
                             if not hasattr(self.agent, '_retry_counter'):
                                 self.agent._retry_counter = 0
@@ -381,8 +437,10 @@ class VehicleAgent(Agent):
                     # SISTEMA DE RESPEITO AOS SEMÁFOROS E PRIORIDADE DE AMBULÂNCIAS
                     should_stop = False
                     stop_reason = ""
+                    stop_distance = 0  # Distância ao nó quando parou
                     
                     # 🚑 PRIORIDADE ABSOLUTA: Verificar se há ambulâncias próximas
+                    # REGRA: Só ceder passagem se estiver PERTO DE UM NÓ (cruzamento)
                     if self.agent.vehicle_type != 'ambulance':
                         # Limpar ambulâncias antigas (mais de 1 segundo)
                         current_time = time.time()
@@ -391,81 +449,90 @@ class VehicleAgent(Agent):
                             if current_time - data['timestamp'] < 1.0
                         }
                         
-                        # Verificar se há ambulância próxima (raio de 150px)
-                        for amb_id, amb_data in self.agent.nearby_ambulances.items():
-                            amb_x = amb_data['x']
-                            amb_y = amb_data['y']
-                            dist_to_ambulance = math.sqrt((amb_x - self.agent.x)**2 + (amb_y - self.agent.y)**2)
+                        # Verificar distância ao próximo nó (target_node)
+                        if target_node in self.agent.nodes:
+                            target_x, target_y = self.agent.nodes[target_node]
+                            dist_to_next_node = math.sqrt((target_x - self.agent.x)**2 + (target_y - self.agent.y)**2)
                             
-                            if dist_to_ambulance < 150:
-                                # Ambulância próxima! CEDER PASSAGEM
-                                should_stop = True
-                                stop_reason = f"AMBULANCIA_{amb_id}"
-                                if self.agent.waiting_time % 30 == 1:
-                                    print(f"🚑 {self.agent.vehicle_id} CEDENDO PASSAGEM para {amb_id} (dist={dist_to_ambulance:.0f}px)")
-                                break
+                            # Só ceder passagem se estiver PERTO do nó (50px ou menos)
+                            if dist_to_next_node <= 50:
+                                # Verificar se há ambulância próxima ao PRÓXIMO NÓ (raio de 150px do nó)
+                                for amb_id, amb_data in self.agent.nearby_ambulances.items():
+                                    amb_x = amb_data['x']
+                                    amb_y = amb_data['y']
+                                    
+                                    # Distância da ambulância ao próximo nó
+                                    amb_dist_to_node = math.sqrt((amb_x - target_x)**2 + (amb_y - target_y)**2)
+                                    
+                                    # Se ambulância está perto do cruzamento (150px), ceder passagem
+                                    if amb_dist_to_node < 150:
+                                        should_stop = True
+                                        stop_reason = f"AMBULANCIA_{amb_id}"
+                                        stop_distance = dist_to_next_node
+                                        if self.agent.waiting_time % 30 == 1:
+                                            print(f"🚑 {self.agent.vehicle_id} CEDENDO PASSAGEM para {amb_id} no nó {target_node} (dist ao nó={dist_to_next_node:.0f}px)")
+                                        break
                     
                     # 🚦 AMBULÂNCIAS IGNORAM SEMÁFOROS (modo urgência)
                     if not should_stop and self.agent.vehicle_type != 'ambulance':
-                        # DETERMINAR DIREÇÃO DO MOVIMENTO (horizontal ou vertical)
-                        # Se dx > dy, movimento é predominantemente HORIZONTAL (leste-oeste)
-                        # Se dy > dx, movimento é predominantemente VERTICAL (norte-sul)
-                        abs_dx = abs(dx)
-                        abs_dy = abs(dy)
-                        
-                        # LÓGICA CORRETA:
-                        # - Movimento HORIZONTAL → verifica semáforo VERTICAL (controla tráfego horizontal)
-                        # - Movimento VERTICAL → verifica semáforo HORIZONTAL (controla tráfego vertical)
-                        # Pense: semáforo "vertical" (barra vertical) bloqueia carros que vão horizontalmente
-                        if abs_dx > abs_dy:
-                            # Movimento horizontal → verifica semáforo vertical
-                            light_orientation = 'vertical'
-                        else:
-                            # Movimento vertical → verifica semáforo horizontal
-                            light_orientation = 'horizontal'
-                        
-                        # Criar chave para buscar o semáforo correto
-                        light_key = f"{target_node}_{light_orientation}"
-                        
-                        # Verificar se existe semáforo com essa orientação nesse nó
-                        if light_key in self.agent.traffic_lights:
-                            light_data = self.agent.traffic_lights[light_key]
-                            light_state = light_data.get('state', 'green')
-                            light_x = light_data.get('x', 0)
-                            light_y = light_data.get('y', 0)
+                        # Calcular distância ao próximo nó (target_node)
+                        if target_node in self.agent.nodes:
+                            target_x, target_y = self.agent.nodes[target_node]
+                            dist_to_next_node = math.sqrt((target_x - self.agent.x)**2 + (target_y - self.agent.y)**2)
                             
-                            # Calcular distância até o semáforo
-                            dist_to_light = math.sqrt((light_x - self.agent.x)**2 + (light_y - self.agent.y)**2)
-                            
-                            # Determinar direção do movimento para debug
-                            movement_dir = 'horizontal' if abs_dx > abs_dy else 'vertical'
-                            
-                            # DEBUG: Log sempre que há semáforo
-                            if self.agent.vehicle_id == 'v0':
-                                print(f"🚦 DEBUG {self.agent.vehicle_id}: movimento={movement_dir}, verifica semáforo={light_key} ({light_orientation}), estado={light_state}, dist={dist_to_light:.0f}px")
-                            
-                            # 3 REGRAS DE PARADA (apenas para NÃO-ambulâncias):
-                            # 1. VERMELHO: SEMPRE para a 60px de distância
-                            if light_state == 'red' and dist_to_light < 60:
-                                should_stop = True
-                                stop_reason = f"RED_{light_orientation[0].upper()}"
-                            
-                            # 2. AMARELO: Para se estiver a menos de 40px (muito perto)
-                            elif light_state == 'yellow' and dist_to_light < 40:
-                                should_stop = True
-                                stop_reason = f"YELLOW_CLOSE_{light_orientation[0].upper()}"
-                            
-                            # 3. VELOCIDADE ALTA + AMARELO: Para se vem muito rápido
-                            elif light_state == 'yellow' and self.agent.speed > 250 and dist_to_light < 70:
-                                should_stop = True
-                                stop_reason = f"YELLOW_FAST_{light_orientation[0].upper()}"
+                            # SÓ VERIFICAR SEMÁFORO SE ESTIVER PERTO DO NÓ (dentro de 60px)
+                            if dist_to_next_node <= 60:
+                                # DETERMINAR DIREÇÃO DO MOVIMENTO (horizontal ou vertical)
+                                abs_dx = abs(dx)
+                                abs_dy = abs(dy)
+                                
+                                # LÓGICA CORRETA:
+                                # - Movimento HORIZONTAL → verifica semáforo VERTICAL (controla tráfego horizontal)
+                                # - Movimento VERTICAL → verifica semáforo HORIZONTAL (controla tráfego vertical)
+                                if abs_dx > abs_dy:
+                                    light_orientation = 'vertical'
+                                else:
+                                    light_orientation = 'horizontal'
+                                
+                                # Criar chave para buscar o semáforo correto
+                                light_key = f"{target_node}_{light_orientation}"
+                                
+                                # Verificar se existe semáforo com essa orientação nesse nó
+                                if light_key in self.agent.traffic_lights:
+                                    light_data = self.agent.traffic_lights[light_key]
+                                    light_state = light_data.get('state', 'green')
+                                    
+                                    # DEBUG: Log ocasionalmente
+                                    # if self.agent.vehicle_id == 'v0' and self.agent.waiting_time % 60 == 0:
+                                    #     movement_dir = 'horizontal' if abs_dx > abs_dy else 'vertical'
+                                    #     print(f"🚦 DEBUG {self.agent.vehicle_id}: movimento={movement_dir}, verifica semáforo={light_key} ({light_orientation}), estado={light_state}, dist ao nó={dist_to_next_node:.0f}px")
+                                    
+                                    # REGRAS DE PARADA (baseadas na distância ao NÓ):
+                                    # 1. VERMELHO: Para se estiver a menos de 50px do nó
+                                    if light_state == 'red' and dist_to_next_node < 50:
+                                        should_stop = True
+                                        stop_reason = f"RED_{light_orientation[0].upper()}"
+                                        stop_distance = dist_to_next_node
+                                    
+                                    # 2. AMARELO: Para se estiver a menos de 30px do nó (muito perto)
+                                    elif light_state == 'yellow' and dist_to_next_node < 30:
+                                        should_stop = True
+                                        stop_reason = f"YELLOW_CLOSE_{light_orientation[0].upper()}"
+                                        stop_distance = dist_to_next_node
+                                    
+                                    # 3. VELOCIDADE ALTA + AMARELO: Para se vem muito rápido e está perto
+                                    elif light_state == 'yellow' and self.agent.speed > 250 and dist_to_next_node < 60:
+                                        should_stop = True
+                                        stop_reason = f"YELLOW_FAST_{light_orientation[0].upper()}"
+                                        stop_distance = dist_to_next_node
                     
                     if should_stop:
                         # PARAR e incrementar tempo de espera
                         self.agent.waiting_time += 1
-                        # Debug: mostrar porque parou
-                        if self.agent.waiting_time % 20 == 1:  # Log a cada 20 frames
-                            print(f"🛑 {self.agent.vehicle_id} PAROU: {stop_reason} no {target_node}")
+                        # Debug: mostrar porque parou (menos frequente)
+                        if self.agent.waiting_time % 40 == 1:  # Log a cada 40 frames
+                            dist_info = f" (dist={stop_distance:.0f}px)" if stop_distance > 0 else ""
+                            print(f"🛑 {self.agent.vehicle_id} PAROU: {stop_reason} no {target_node}{dist_info}")
                     else:
                         # MOVER em direção ao alvo
                         speed_factor = 0.1 * (self.agent.speed / 60.0)
@@ -506,6 +573,9 @@ class VehicleAgent(Agent):
                     if self.agent.route_index >= len(self.agent.route):
                         # Chegou ao destino - FAZER LOOP A→B→A
                         
+                        # Guardar destino atual antes da troca
+                        destination_reached = self.agent.end_node
+                        
                         # Trocar origem e destino (inverter o caminho)
                         temp = self.agent.start_node
                         self.agent.start_node = self.agent.end_node
@@ -513,10 +583,12 @@ class VehicleAgent(Agent):
                         
                         # Registrar custo original da rota antes de recalcular
                         original_cost = getattr(self.agent, 'route_total_cost', 0.0)
-                        # Recalcular rota usando A* para o caminho de volta
+                        
+                        # CORREÇÃO: Recalcular rota a partir do nó ATUAL (que é o destino alcançado)
+                        # para garantir que a rota começa do ponto onde o veículo está
                         new_route = self.agent.calculate_route_astar(self.agent.current_node, self.agent.end_node)
                         
-                        if new_route:
+                        if new_route and len(new_route) > 0:
                             self.agent.route = new_route
                             self.agent.route_index = 0
                             self.agent.target_node = self.agent.route[0]
@@ -531,6 +603,9 @@ class VehicleAgent(Agent):
                                     self.agent.metrics.log_semaphore_penalty(self.agent.vehicle_id, base_cost, sem_penalty)
                                     self.agent.metrics.log_traffic_penalty(self.agent.vehicle_id, base_cost, traffic_penalty)
                                     self.agent.metrics.flush()
+                                    
+                                    # Enviar métricas para dashboard via XMPP
+                                    await self._send_metrics_to_dashboard(original_cost, new_cost, sem_penalty, traffic_penalty)
                                 except Exception:
                                     pass
                             # Registrar custos da nova rota
@@ -544,13 +619,91 @@ class VehicleAgent(Agent):
                             
                             # Log apenas para alguns veículos (evitar spam)
                             if self.agent.vehicle_id in ['v0', 'AMB0']:
-                                print(f"🔄 {self.agent.vehicle_id}: Chegou a {self.agent.start_node}, voltando para {self.agent.end_node}")
+                                print(f"🔄 {self.agent.vehicle_id}: Chegou a {destination_reached}, voltando para {self.agent.end_node}")
                         else:
-                            print(f"⚠️ {self.agent.vehicle_id}: Sem rota de volta disponível! Mantendo posição.")
+                            # SEM ROTA DISPONÍVEL - evitar loop infinito
+                            # Tentar rota alternativa para um nó adjacente primeiro
+                            print(f"⚠️ {self.agent.vehicle_id}: Sem rota direta de {self.agent.current_node} para {self.agent.end_node}")
+                            
+                            # Tentar encontrar um nó adjacente não bloqueado como destino temporário
+                            alternative_found = False
+                            if self.agent.current_node in self.agent.graph:
+                                for neighbor, edge_id in self.agent.graph[self.agent.current_node]:
+                                    if edge_id not in self.agent.blocked_edges:
+                                        # Tentar rota até este vizinho primeiro
+                                        alt_route = self.agent.calculate_route_astar(self.agent.current_node, neighbor)
+                                        if alt_route and len(alt_route) > 0:
+                                            self.agent.route = alt_route
+                                            self.agent.route_index = 0
+                                            self.agent.target_node = self.agent.route[0]
+                                            alternative_found = True
+                                            print(f"🔀 {self.agent.vehicle_id}: Usando rota alternativa via {neighbor}")
+                                            break
+                            
+                            if not alternative_found:
+                                # Última opção: manter posição e aguardar mudança de bloqueios
+                                print(f"🛑 {self.agent.vehicle_id}: Completamente bloqueado em {self.agent.current_node}, aguardando...")
+                                self.agent.route = []
+                                self.agent.waiting_time += 1
                     else:
                         self.agent.target_node = self.agent.route[self.agent.route_index]
             
             self.agent.total_travel_time += 1
+        
+        async def _send_latency_to_dashboard(self, latency_ms):
+            """Envia latência de recálculo A* para o dashboard"""
+            try:
+                msg = Message(to="dashboard@localhost")
+                msg.set_metadata("performative", "inform")
+                msg.body = json.dumps({
+                    "type": "metric_latency",
+                    "vehicle_id": self.agent.vehicle_id,
+                    "latency_ms": latency_ms
+                })
+                await self.send(msg)
+                print(f"📊 {self.agent.vehicle_id}: Latência enviada para dashboard ({latency_ms:.2f}ms)")
+            except Exception as e:
+                print(f"❌ {self.agent.vehicle_id}: Erro ao enviar latência: {e}")
+        
+        async def _send_metrics_to_dashboard(self, original_cost, new_cost, sem_penalty, traffic_penalty):
+            """Envia métricas para o dashboard via XMPP"""
+            try:
+                # Métrica de rota (custos)
+                route_msg = Message(to="dashboard@localhost")
+                route_msg.set_metadata("performative", "inform")
+                route_msg.body = json.dumps({
+                    "type": "metric_route",
+                    "vehicle_id": self.agent.vehicle_id,
+                    "original_cost": original_cost,
+                    "recalculated_cost": new_cost,
+                    "deviation": new_cost / original_cost if original_cost > 0 else 1.0
+                })
+                await self.send(route_msg)
+                print(f"📊 {self.agent.vehicle_id}: Rota enviada para dashboard (orig={original_cost:.1f}, rec={new_cost:.1f})")
+                
+                # Métrica de semáforo
+                sem_msg = Message(to="dashboard@localhost")
+                sem_msg.set_metadata("performative", "inform")
+                sem_msg.body = json.dumps({
+                    "type": "metric_semaphore",
+                    "vehicle_id": self.agent.vehicle_id,
+                    "penalty": sem_penalty
+                })
+                await self.send(sem_msg)
+                print(f"📊 {self.agent.vehicle_id}: Semáforo enviado para dashboard (pen={sem_penalty:.1f})")
+                
+                # Métrica de tráfego
+                traffic_msg = Message(to="dashboard@localhost")
+                traffic_msg.set_metadata("performative", "inform")
+                traffic_msg.body = json.dumps({
+                    "type": "metric_traffic",
+                    "vehicle_id": self.agent.vehicle_id,
+                    "penalty": traffic_penalty
+                })
+                await self.send(traffic_msg)
+                print(f"📊 {self.agent.vehicle_id}: Tráfego enviado para dashboard (pen={traffic_penalty:.1f})")
+            except Exception as e:
+                print(f"❌ {self.agent.vehicle_id}: Erro ao enviar métricas: {e}")
     
     class ReceiveMessagesBehaviour(CyclicBehaviour):
         """Behaviour para receber mensagens"""
@@ -661,10 +814,14 @@ class VehicleAgent(Agent):
                         # Forçar recálculo de rota
                         self.agent.route = []  # Força recálculo na próxima iteração
                         end_ts = time.perf_counter()
+                        latency_ms = (end_ts - start_ts) * 1000
                         if self.agent.metrics:
                             try:
                                 self.agent.metrics.log_recalc_latency(self.agent.vehicle_id, start_ts, end_ts)
                                 self.agent.metrics.flush()
+                                
+                                # Enviar latência para dashboard via XMPP
+                                await self._send_latency_to_dashboard(latency_ms)
                             except Exception:
                                 pass
                         
@@ -701,6 +858,61 @@ class VehicleAgent(Agent):
                     "speed": self.agent.speed
                 })
                 await self.send(msg)
+        
+        async def _send_latency_to_dashboard(self, latency_ms):
+            """Envia latência de recálculo A* para o dashboard"""
+            try:
+                msg = Message(to="dashboard@localhost")
+                msg.set_metadata("performative", "inform")
+                msg.body = json.dumps({
+                    "type": "metric_latency",
+                    "vehicle_id": self.agent.vehicle_id,
+                    "latency_ms": latency_ms
+                })
+                await self.send(msg)
+                print(f"📊 {self.agent.vehicle_id}: Latência enviada para dashboard ({latency_ms:.2f}ms)")
+            except Exception as e:
+                print(f"❌ {self.agent.vehicle_id}: Erro ao enviar latência: {e}")
+        
+        async def _send_metrics_to_dashboard(self, original_cost, new_cost, sem_penalty, traffic_penalty):
+            """Envia métricas para o dashboard via XMPP"""
+            try:
+                # Métrica de rota (custos)
+                route_msg = Message(to="dashboard@localhost")
+                route_msg.set_metadata("performative", "inform")
+                route_msg.body = json.dumps({
+                    "type": "metric_route",
+                    "vehicle_id": self.agent.vehicle_id,
+                    "original_cost": original_cost,
+                    "recalculated_cost": new_cost,
+                    "deviation": new_cost / original_cost if original_cost > 0 else 1.0
+                })
+                await self.send(route_msg)
+                print(f"📊 {self.agent.vehicle_id}: Rota enviada para dashboard (orig={original_cost:.1f}, rec={new_cost:.1f})")
+                
+                # Métrica de semáforo
+                sem_msg = Message(to="dashboard@localhost")
+                sem_msg.set_metadata("performative", "inform")
+                sem_msg.body = json.dumps({
+                    "type": "metric_semaphore",
+                    "vehicle_id": self.agent.vehicle_id,
+                    "penalty": sem_penalty
+                })
+                await self.send(sem_msg)
+                print(f"📊 {self.agent.vehicle_id}: Semáforo enviado para dashboard (pen={sem_penalty:.1f})")
+                
+                # Métrica de tráfego
+                traffic_msg = Message(to="dashboard@localhost")
+                traffic_msg.set_metadata("performative", "inform")
+                traffic_msg.body = json.dumps({
+                    "type": "metric_traffic",
+                    "vehicle_id": self.agent.vehicle_id,
+                    "penalty": traffic_penalty
+                })
+                await self.send(traffic_msg)
+                print(f"📊 {self.agent.vehicle_id}: Tráfego enviado para dashboard (pen={traffic_penalty:.1f})")
+            except Exception as e:
+                print(f"❌ {self.agent.vehicle_id}: Erro ao enviar métricas: {e}")
     
     class AmbulanceBroadcastBehaviour(PeriodicBehaviour):
         """Behaviour para ambulâncias enviarem broadcast de posição (PRIORIDADE)"""
@@ -941,6 +1153,19 @@ class CoordinatorAgent(Agent):
                         edge_id = data.get('edge_id')
                         if edge_id:
                             self.agent.traffic_reports[edge_id] = data
+                            
+                            # Broadcast para todos os veículos
+                            for vehicle_jid in self.agent.vehicles.keys():
+                                msg_reply = Message(to=vehicle_jid)
+                                msg_reply.set_metadata("performative", "inform")
+                                msg_reply.body = json.dumps({
+                                    "type": "traffic_report",
+                                    "vehicle_id": data.get('vehicle_id'),
+                                    "edge_id": edge_id,
+                                    "delay": data.get('delay'),
+                                    "speed": data.get('speed')
+                                })
+                                await self.send(msg_reply)
                     
                     elif msg_type == 'light_state':
                         # Armazenar estado do semaforo

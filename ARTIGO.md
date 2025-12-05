@@ -36,7 +36,7 @@ Os princípios orientadores foram os seguintes. Em primeiro lugar, cada entidade
 Para aferir robustez, desenharam-se cenários com ativação de bloqueios durante o deslocamento de veículos, instâncias de ambulâncias com prioridade e intersecções com semáforos em estados alternados. O critério de sucesso incluiu a ausência de trânsito em vias bloqueadas, a manutenção de segurança em intersecções e a continuidade de viagens no ciclo A para B e B para A.
 
 ### Metodologia de Medição
-As métricas foram recolhidas por instrumentação do código com timestamps de alta resolução e exportação para ficheiros `CSV`. Para a latência de recálculo de rota registou-se o instante de receção da mensagem `blocked_edges_update` e o instante de conclusão do algoritmo A* para cada veículo. Para o comprimento de desvio comparou-se a soma de pesos da rota original com a rota recalculada após bloqueio. Para o impacto de semáforos calculou-se a percentagem de penalização adicional em rotas que atravessaram intersecções em fase desfavorável. As amostras foram agregadas por cenário e calculadas métricas descritivas como média e percentis. O script `scripts/collect_metrics.py` automatiza a recolha e a exportação de dados.
+As métricas são recolhidas com timestamps de alta resolução no próprio agente e enviadas diretamente para um **dashboard LIVE via XMPP**, reduzindo latência e garantindo coerência temporal. Para a latência de recálculo de rota, regista-se o instante de início e fim da execução do A* e envia-se uma mensagem `metric_latency` para o dashboard. Para o desvio, os veículos enviam `metric_route` com custos original e recalculado; o dashboard calcula médias e fatores de desvio. Penalizações de semáforo e tráfego são agregadas em `metric_semaphore` e `metric_traffic`. O **acumulador do dashboard** mantém os últimos valores por veículo até renovação, garantindo persistência visual entre atualizações.
 
 ### Questões de Investigação e Desenho Experimental
 O estudo centra-se em três questões. Primeira questão, a eficácia de verificações múltiplas em eliminar violações de bloqueios quando estes ocorrem durante o deslocamento. Segunda questão, o impacto da coordenação ortogonal de semáforos nos custos de rota e tempos de espera. Terceira questão, o custo adicional de desvios induzidos por bloqueios e o efeito da prioridade de ambulâncias no fluxo global. Desenharam-se cenários com e sem disrupção, com e sem ambulâncias e com diferentes regimes de semáforos, mantendo inalterados a topologia e o número de agentes para comparabilidade.
@@ -53,9 +53,9 @@ A arquitetura integra três camadas principais: visualização, agentes e comuni
   - DisruptorAgent: seleciona 3 ruas aleatórias e bloqueia ambas as direções de cada rua (total 6 arestas), evitando perímetros.
   - TrafficLightAgent: gere pares H+V de semáforos com tempos verde, amarelo e vermelho, garantindo que H e V não estão simultaneamente verdes.
   - VehicleAgent: calcula rotas com A*, respeita semáforos e prioridade de ambulâncias, verifica bloqueios antes e durante o movimento e no momento de receção de mensagens de atualização.
-- Comunicação XMPP via Prosody: Todos os agentes autenticam-se com JIDs distintos e trocam mensagens JSON. O CoordinatorAgent realiza broadcasts de bloqueios para veículos.
+- Comunicação XMPP via Prosody: Todos os agentes autenticam-se com JIDs distintos e trocam mensagens JSON. O CoordinatorAgent realiza broadcasts de bloqueios para veículos e difunde relatórios de tráfego recebidos. Um **DashboardAgent** (`dashboard@localhost`) recebe métricas diretamente dos veículos para visualização ao vivo.
 
-O ficheiro `live_dynamic_spade.py` integra a camada de visualização e coordena a inicialização dos agentes. A grelha é definida com nós equidistantes e arestas com pesos base que representam tipos de vias. O painel lateral expõe o estado do sistema e permite interações básicas como ativar disrupções e ajustar velocidade de simulação. A comunicação com os agentes faz-se através de mensagens que seguem um esquema JSON consistente, incluindo tipos como `network_request`, `traffic_light_update`, `ambulance_position` e `blocked_edges_update`.
+O ficheiro `live_dynamic_spade.py` integra a camada de visualização e coordena a inicialização dos agentes. A grelha é definida com nós equidistantes e arestas com pesos base que representam tipos de vias. O painel lateral expõe o estado do sistema e permite interações básicas como ativar disrupções e ajustar velocidade de simulação. A comunicação com os agentes faz-se através de mensagens que seguem um esquema JSON consistente, incluindo tipos como `network_request`, `traffic_light_update`, `ambulance_position` e `blocked_edges_update`. Adicionalmente, os veículos emitem **mensagens de métricas** (`metric_latency`, `metric_route`, `metric_semaphore`, `metric_traffic`) para o dashboard.
 
 O desenho das mensagens privilegia payloads autocontidos e tipos explícitos, reduzindo acoplamento entre emissores e recetores. O coordenador agrega estados e executa difusões para todos os veículos, alinhado com boas práticas de desacoplamento e responsabilidade única em sistemas multiagente.
 
@@ -76,10 +76,10 @@ Formalização do A*. Considere um grafo dirigido $G=(V,E)$, com custo $c(u,v)\g
 O `DisruptorAgent` agrupa arestas em pares bidirecionais por rua, seleciona 3 ruas e bloqueia ambas as direções. As vias bloqueadas são renderizadas a vermelho com um X. O Coordinator difunde a lista de arestas bloqueadas e os veículos recalculam rotas.
 
 ### Semáforos Coordenados
-`TrafficLightAgent` gere pares horizontal e vertical por intersecção. Os tempos de ciclo são configuráveis e a coordenação impede conflitos de fase. O estado dos semáforos afeta o custo de arestas no A*.
+`TrafficLightAgent` gere pares horizontal e vertical por intersecção. Os tempos de ciclo são configuráveis e a coordenação impede conflitos de fase. O estado dos semáforos afeta o custo de arestas no A*. Os **veículos só verificam semáforos quando se aproximam do nó (cruzamento)** e **param antes do nó** (em distâncias seguras dependentes do estado), evitando paragens no meio das arestas.
 
 ### Prioridade de Ambulâncias
-Veículos normais param ao detetar ambulâncias próximas. Ambulâncias têm velocidade superior e mantêm o mesmo mecanismo de recálculo de rotas perante bloqueios.
+Veículos normais cedem passagem às ambulâncias **apenas quando se encontram próximos do próximo nó** (cruzamento), e quando a ambulância está nas imediações desse nó. Este desenho evita paragens no meio das vias e concentra a cedência nos pontos de interseção, espelhando práticas reais de circulação. Ambulâncias mantêm velocidade superior e o mesmo mecanismo de recálculo de rotas perante bloqueios.
 
 ### Loop Infinito A→B→A
 Todos os veículos alternam entre pontos de origem e destino. Ao chegar ao destino B, o agente troca origem e destino e recalcula uma rota ótima de B para A, repetindo o ciclo até cessar a aplicação.
@@ -91,6 +91,7 @@ Todos os veículos alternam entre pontos de origem e destino. Ao chegar ao desti
   - `Vehicle.ReceiveMessagesBehaviour`: cíclico, processamento imediato de `blocked_edges_update` e `traffic_light_update`.
   - `TrafficLight.CycleBehaviour`: períodos configuráveis (e.g., `G=4 s`, `Y=1 s`, `R=4 s`), garantida exclusão mútua H/V.
   - `Disruptor.ToggleBehaviour`: escuta de tecla `SPACE` e difusão de bloqueios bidirecionais.
+  - `Dashboard.ReceiveMetricsBehaviour`: receção contínua de métricas dos veículos e acumulação por JID/ID.
 - Esquemas JSON (exemplos):
   - `blocked_edges_update`
     ```json
@@ -122,6 +123,40 @@ Todos os veículos alternam entre pontos de origem e destino. Ao chegar ao desti
       "timestamp": 1733400002.501
     }
     ```
+  - `metric_route`
+        ```json
+        {
+          "type": "metric_route",
+          "vehicle_id": "v7",
+          "original_cost": 420.0,
+          "recalculated_cost": 510.0,
+          "deviation": 1.21
+        }
+        ```
+  - `metric_latency`
+        ```json
+        {
+          "type": "metric_latency",
+          "vehicle_id": "v7",
+          "latency_ms": 54.7
+        }
+        ```
+  - `metric_semaphore`
+        ```json
+        {
+          "type": "metric_semaphore",
+          "vehicle_id": "v7",
+          "penalty": 12.0
+        }
+        ```
+  - `metric_traffic`
+        ```json
+        {
+          "type": "metric_traffic",
+          "vehicle_id": "v7",
+          "penalty": 0.0
+        }
+        ```
   - `network_request`
     ```json
     {
@@ -133,12 +168,13 @@ Todos os veículos alternam entre pontos de origem e destino. Ao chegar ao desti
     ```
 
 ### Verificação e Segurança Operacional
-Para garantir segurança operacional definiram-se verificações redundantes nos veículos. A verificação inicial evita entrar numa aresta bloqueada. A verificação intermédia interrompe deslocamentos pixel a pixel perante bloqueio iminente ou presença de ambulância. A verificação ao chegar ao nó impede a progressão para uma aresta bloqueada seguinte. A verificação durante a receção de atualização de bloqueios deteta imediatamente quando um veículo está a atravessar uma aresta que se tornou bloqueada, e força recálculo da rota e paragem temporária. Este conjunto de mecanismos reduziu significativamente casos de atravessamento indevido de vias bloqueadas.
+Definiram-se **verificações redundantes** nos veículos: inicial (antes de entrar numa aresta), intermédia (durante o deslocamento pixel a pixel), ao chegar ao nó (validar próxima aresta) e na receção de atualização (detetar e reagir a bloqueio enquanto em movimento). Além disso, **a verificação de semáforos e a cedência a ambulâncias ocorrem apenas quando próximos do nó**, assegurando paragens junto ao cruzamento e evitando travagens no meio das vias. Este conjunto de mecanismos reduziu significativamente casos de atravessamento indevido de vias bloqueadas e melhorou a naturalidade do comportamento.
 
 ### Integração e Orquestração
+Os agentes são inicializados com credenciais no Prosody e conectam-se sequencialmente. O Coordinator disponibiliza a topologia e atualiza estados partilhados de bloqueios. O Disruptor alterna entre estados ativo e inativo mediante comando do utilizador e distribui atualizações aos veículos. Os semáforos em pares comunicam mudanças de estado periodicamente. Os veículos reportam posição de ambulâncias para que os restantes possam adotar comportamentos de cedência. Esta orquestração garante um fluxo contínuo de informação e permite reações rápidas a eventos.
+
 ### Ameaças à Validade
 As principais ameaças internas incluem o modelo físico simplificado e a representação agregada de penalidades por semáforos e tráfego. As ameaças externas relacionam-se com a generalização de resultados de uma grelha regular para redes urbanas reais com sentidos únicos e restrições de viragem. Existe ainda variabilidade de latência do XMPP consoante o ambiente, o que pode afetar medidas de tempo de recálculo.
-Os agentes são inicializados com credenciais no Prosody e conectam-se sequencialmente. O Coordinator disponibiliza a topologia e atualiza estados partilhados de bloqueios. O Disruptor alterna entre estados ativo e inativo mediante comando do utilizador e distribui atualizações aos veículos. Os semáforos em pares comunicam mudanças de estado periodicamente. Os veículos reportam posição de ambulâncias para que os restantes possam adotar comportamentos de cedência. Esta orquestração garante um fluxo contínuo de informação e permite reações rápidas a eventos.
 
 ## Resultados
 A simulação demonstra:
@@ -147,6 +183,7 @@ A simulação demonstra:
 - Coordenação de semáforos reduz conflitos em intersecções e influencia custos de rota.
 - Ambulâncias recebem prioridade prática quando veículos próximos param, mantendo fluxo de emergência.
 - O loop A→B→A mantém percursos contínuos e demonstra robustez do A* em condições dinâmicas.
+- O dashboard LIVE agregou métricas de forma consistente e evitou perda visual de dados entre atualizações, permitindo acompanhamento de latências, custos e penalizações por veículo.
 
 Observou-se estabilidade do sistema perante disrupções repetidas. O algoritmo A* apresentou caminhos alternativos com custos compatíveis quando penalizações por semáforos eram elevadas. Em cenários com ativação de bloqueios durante o deslocamento, os veículos recuavam ao último nó válido e retomavam a viagem por itinerário seguro. O painel de controlo refletiu com nitidez o estado dos bloqueios, o número de agentes e a velocidade de simulação, facilitando a supervisão.
 
@@ -196,7 +233,7 @@ Figura 3. Cronograma de semáforos coordenados: fases horizontal e vertical com 
 - Implementação de heurísticas consistentes e variantes de A* para melhorar desempenho em grandes redes.
 - Coordenação adaptativa de semáforos baseada em densidade e previsões.
 - Gestão de prioridade com protocolos dedicados para veículos de emergência.
-- Persistentência de dados e métricas para análise longitudinal de cenários.
+- Persistência de dados e métricas para análise longitudinal de cenários.
 - Escala para redes urbanas reais com importação de grafos viários.
  - Incorporar sensores virtuais e feedback local para decisões dos agentes com base em perceção distribuída.
  - Suporte a aprendizagem por reforço para otimização de políticas de semáforos e escolha de rotas com dados históricos.

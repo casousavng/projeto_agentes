@@ -1,0 +1,6 @@
+metric,value
+detour_factor_avg,1.000
+detour_factor_p50,1.000
+detour_factor_p95,1.000
+semaphore_penalty_share_avg,0.0000
+traffic_penalty_share_avg,0.0000
