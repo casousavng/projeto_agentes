@@ -13,6 +13,10 @@ import math
 import heapq
 import random
 import time
+try:
+    from scripts.collect_metrics import MetricsCollector
+except Exception:
+    MetricsCollector = None
 from typing import Dict, List, Tuple, Optional
 from spade.agent import Agent
 from spade.behaviour import CyclicBehaviour, OneShotBehaviour, PeriodicBehaviour
@@ -29,6 +33,8 @@ class VehicleAgent(Agent):
         self.vehicle_type = vehicle_type  # 'car', 'ambulance', 'journey'
         self.start_node = start_node
         self.end_node = end_node
+        self.original_start = start_node  # Guardar ponto A original
+        self.original_end = end_node      # Guardar ponto B original
         
         # Estado visual (para Pygame)
         self.current_node = start_node
@@ -67,6 +73,8 @@ class VehicleAgent(Agent):
         self.traffic_lights = {}   # Cache local de semaforos
         self.nearby_ambulances = {}  # Cache de ambulâncias próximas {ambulance_id: {'x': x, 'y': y, 'timestamp': time}}
         self.blocked_edges = set()  # Arestas bloqueadas pelo disruptor
+        # Coletor de métricas (opcional)
+        self.metrics = MetricsCollector(output_dir="metrics") if MetricsCollector else None
         
     async def setup(self):
         """Configuracao inicial do agente"""
@@ -165,9 +173,65 @@ class VehicleAgent(Agent):
                 
                 # Calcular custo total da rota (soma dos pesos das arestas)
                 if len(path) > 0:
+                    # Custo agregado calculado por g_score
                     self.route_total_cost = g_score[goal]
                     self.route_cost_traveled = 0
                     self.edge_start_node = start
+                    # Calcular custos base e penalidades separadamente para métricas
+                    base_cost_total = 0.0
+                    penalty_cost_total = 0.0
+                    traffic_penalty_total = 0.0
+                    semaphore_penalty_total = 0.0
+                    for i in range(len(path) - 1):
+                        node_from = path[i]
+                        node_to = path[i + 1]
+                        # Encontrar edge_id
+                        edge_id = None
+                        for neighbor, e_id in self.graph.get(node_from, []):
+                            if neighbor == node_to:
+                                edge_id = e_id
+                                break
+                        if edge_id is None:
+                            continue
+                        # Peso base da aresta
+                        edge_weight_base = self.edges.get(edge_id, {}).get('weight', 100.0)
+                        base_cost_total += edge_weight_base
+                        # Penalidade por trafego
+                        traffic_delay = self.traffic_reports.get(edge_id, {}).get('delay', 0)
+                        traffic_pen = traffic_delay * 5
+                        penalty_cost_total += traffic_pen
+                        traffic_penalty_total += traffic_pen
+                        # Penalidade por semáforo
+                        # Considera estado do semáforo no nó de chegada
+                        # Suporta formato com orientação e sem orientação
+                        sem_penalty = 0
+                        # Preferência: semáforos com orientação
+                        if f"{node_to}_horizontal" in self.traffic_lights:
+                            state = self.traffic_lights[f"{node_to}_horizontal"].get('state', 'green')
+                            if state == 'red':
+                                sem_penalty = max(sem_penalty, 200)
+                            elif state == 'yellow':
+                                sem_penalty = max(sem_penalty, 50)
+                        if f"{node_to}_vertical" in self.traffic_lights:
+                            state = self.traffic_lights[f"{node_to}_vertical"].get('state', 'green')
+                            if state == 'red':
+                                sem_penalty = max(sem_penalty, 200)
+                            elif state == 'yellow':
+                                sem_penalty = max(sem_penalty, 50)
+                        # Fallback: semáforo sem orientação
+                        if node_to in self.traffic_lights:
+                            state = self.traffic_lights[node_to].get('state', 'green')
+                            if state == 'red':
+                                sem_penalty = max(sem_penalty, 200)
+                            elif state == 'yellow':
+                                sem_penalty = max(sem_penalty, 50)
+                        penalty_cost_total += sem_penalty
+                        semaphore_penalty_total += sem_penalty
+                    # Guardar métricas separadas
+                    self.route_base_cost = base_cost_total
+                    self.route_penalty_cost = penalty_cost_total
+                    self.route_traffic_penalty_cost = traffic_penalty_total
+                    self.route_semaphore_penalty_cost = semaphore_penalty_total
                 
                 if blocked_count > 0:
                     print(f"🛤️  {self.vehicle_id}: Rota calculada evitando {blocked_count} vias bloqueadas")
@@ -212,6 +276,28 @@ class VehicleAgent(Agent):
             print(f"⛔ {self.vehicle_id}: Sem rota disponível! Bloqueios impediram acesso ao destino ({blocked_count} vias bloqueadas)")
         return []
     
+    def is_edge_blocked(self, from_node, to_node):
+        """Verifica se a aresta entre dois nós está bloqueada
+        
+        Args:
+            from_node: Nó de origem
+            to_node: Nó de destino
+            
+        Returns:
+            tuple: (is_blocked, edge_id) onde is_blocked é bool e edge_id é o ID da aresta (ou None)
+        """
+        if from_node not in self.graph:
+            return (False, None)
+        
+        # Procurar a aresta entre from_node e to_node
+        for neighbor, edge_id in self.graph[from_node]:
+            if neighbor == to_node:
+                # Verificar se está bloqueada
+                is_blocked = edge_id in self.blocked_edges
+                return (is_blocked, edge_id)
+        
+        return (False, None)
+    
     class MoveBehaviour(PeriodicBehaviour):
         """Behaviour para movimentacao do veiculo"""
         
@@ -219,6 +305,20 @@ class VehicleAgent(Agent):
             """Atualiza posicao do veiculo"""
             if not self.agent.moving or self.agent.arrival_time is not None:
                 return
+            
+            # 🚧 VERIFICAÇÃO CRÍTICA 1: Verificar se o veículo está NUMA aresta bloqueada
+            # Isso captura veículos que já estavam em movimento quando a via foi bloqueada
+            if self.agent.route and self.agent.route_index < len(self.agent.route):
+                current = self.agent.current_node
+                next_node = self.agent.route[self.agent.route_index]
+                
+                is_blocked, edge_id = self.agent.is_edge_blocked(current, next_node)
+                if is_blocked:
+                    print(f"🚨 {self.agent.vehicle_id} ({self.agent.vehicle_type}): ARESTA ATUAL {current}->{next_node} (edge {edge_id}) ESTÁ BLOQUEADA!")
+                    print(f"🚨 {self.agent.vehicle_id}: Forçando recálculo de rota...")
+                    # Forçar recálculo (veículo continua tentando a cada frame)
+                    self.agent.route = []  # Limpar rota atual
+                    return  # Retorna para recalcular no próximo frame
             
             # Se nao tem rota, calcular
             if not self.agent.route:
@@ -240,26 +340,20 @@ class VehicleAgent(Agent):
                             new_destination = random.choice(available_nodes)
                             print(f"🔄 {self.agent.vehicle_id}: Sem rota para {self.agent.end_node}. Tentando novo destino: {new_destination}")
                             self.agent.end_node = new_destination
+                            # Tentar calcular rota imediatamente para o novo destino
+                            return
                         else:
                             print(f"⚠️ {self.agent.vehicle_id}: Sem destinos alternativos disponíveis!")
-                    # Journey vehicle e ambulâncias: aguardar (bloqueios podem ser temporários)
+                    else:
+                        # Journey vehicle e ambulâncias: aguardar e tentar novamente
+                        if self.agent.vehicle_id == 'v0' or self.agent.vehicle_type == 'ambulance':
+                            # Exibir mensagem apenas a cada 60 frames para não poluir o console
+                            if not hasattr(self.agent, '_retry_counter'):
+                                self.agent._retry_counter = 0
+                            self.agent._retry_counter += 1
+                            if self.agent._retry_counter % 60 == 1:
+                                print(f"⏳ {self.agent.vehicle_id} ({self.agent.vehicle_type}): Aguardando rota disponível... (tentativa {self.agent._retry_counter//60})")
                     return
-            
-            # 🚧 VERIFICAR SE A ARESTA ATUAL ESTÁ BLOQUEADA
-            if self.agent.route and self.agent.route_index < len(self.agent.route):
-                current = self.agent.current_node
-                next_node = self.agent.route[self.agent.route_index]
-                
-                # Encontrar o edge_id entre current e next_node
-                if current in self.agent.graph:
-                    for neighbor, edge_id in self.agent.graph[current]:
-                        if neighbor == next_node:
-                            # Verificar se está bloqueada
-                            if edge_id in self.agent.blocked_edges:
-                                print(f"🚫 {self.agent.vehicle_id}: via atual {current}->{next_node} (edge {edge_id}) está BLOQUEADA! Recalculando...")
-                                self.agent.route = []  # Forçar recálculo
-                                return
-                            break
             
             # Mover ao longo da rota
             if self.agent.route and self.agent.route_index < len(self.agent.route):
@@ -274,6 +368,16 @@ class VehicleAgent(Agent):
                 distance = math.sqrt(dx**2 + dy**2)
                 
                 if distance > 2:
+                    # 🚧 VERIFICAÇÃO CRÍTICA 3: ANTES DE MOVER, verificar se a aresta não está bloqueada
+                    # Esta é uma verificação extra de segurança antes de qualquer movimento
+                    current = self.agent.current_node
+                    is_blocked, edge_id = self.agent.is_edge_blocked(current, target_node)
+                    if is_blocked:
+                        print(f"🛑 {self.agent.vehicle_id} ({self.agent.vehicle_type}): Tentou mover em aresta BLOQUEADA {current}->{target_node} (edge {edge_id})")
+                        print(f"🛑 {self.agent.vehicle_id}: Cancelando movimento e forçando recálculo...")
+                        self.agent.route = []
+                        return
+                    
                     # SISTEMA DE RESPEITO AOS SEMÁFOROS E PRIORIDADE DE AMBULÂNCIAS
                     should_stop = False
                     stop_reason = ""
@@ -375,20 +479,17 @@ class VehicleAgent(Agent):
                     self.agent.y = target_y
                     self.agent.route_index += 1
                     
-                    # 🚧 VERIFICAÇÃO CRÍTICA: Antes de avançar, verificar se a PRÓXIMA aresta está bloqueada
+                    # 🚧 VERIFICAÇÃO CRÍTICA 2: Antes de avançar, verificar se a PRÓXIMA aresta está bloqueada
                     if self.agent.route_index < len(self.agent.route):
                         next_target = self.agent.route[self.agent.route_index]
                         
-                        # Verificar se a aresta entre current_node e next_target está bloqueada
-                        if target_node in self.agent.graph:
-                            for neighbor, edge_id in self.agent.graph[target_node]:
-                                if neighbor == next_target:
-                                    if edge_id in self.agent.blocked_edges:
-                                        print(f"⛔ {self.agent.vehicle_id}: PRÓXIMA via {target_node}->{next_target} (edge {edge_id}) está BLOQUEADA!")
-                                        print(f"⛔ {self.agent.vehicle_id}: Parando no nó {target_node} e recalculando...")
-                                        self.agent.route = []  # Forçar recálculo completo
-                                        return
-                                    break
+                        # Usar o método auxiliar para verificar se está bloqueada
+                        is_blocked, edge_id = self.agent.is_edge_blocked(target_node, next_target)
+                        if is_blocked:
+                            print(f"⛔ {self.agent.vehicle_id} ({self.agent.vehicle_type}): PRÓXIMA via {target_node}->{next_target} (edge {edge_id}) está BLOQUEADA!")
+                            print(f"⛔ {self.agent.vehicle_id}: Parando no nó {target_node} e recalculando...")
+                            self.agent.route = []  # Forçar recálculo completo
+                            return  # Retorna para recalcular no próximo frame
                     
                     # Acumular custo da aresta percorrida (para journey vehicle)
                     if self.agent.vehicle_id == 'v0' and prev_node and self.agent.edge_start_node:
@@ -403,36 +504,49 @@ class VehicleAgent(Agent):
                         self.agent.edge_start_node = target_node
                     
                     if self.agent.route_index >= len(self.agent.route):
-                        # Chegou ao destino
+                        # Chegou ao destino - FAZER LOOP A→B→A
                         
-                        # APENAS o journey vehicle (vehicle_0) para ao chegar
-                        if self.agent.vehicle_id == 'v0':
-                            self.agent.arrival_time = self.agent.total_travel_time
-                            self.agent.moving = False
+                        # Trocar origem e destino (inverter o caminho)
+                        temp = self.agent.start_node
+                        self.agent.start_node = self.agent.end_node
+                        self.agent.end_node = temp
+                        
+                        # Registrar custo original da rota antes de recalcular
+                        original_cost = getattr(self.agent, 'route_total_cost', 0.0)
+                        # Recalcular rota usando A* para o caminho de volta
+                        new_route = self.agent.calculate_route_astar(self.agent.current_node, self.agent.end_node)
+                        
+                        if new_route:
+                            self.agent.route = new_route
+                            self.agent.route_index = 0
+                            self.agent.target_node = self.agent.route[0]
+                            # Registrar custos da nova rota e penalidades de semáforo
+                            if self.agent.metrics:
+                                try:
+                                    new_cost = getattr(self.agent, 'route_total_cost', 0.0)
+                                    base_cost = getattr(self.agent, 'route_base_cost', 0.0)
+                                    sem_penalty = getattr(self.agent, 'route_semaphore_penalty_cost', 0.0)
+                                    traffic_penalty = getattr(self.agent, 'route_traffic_penalty_cost', 0.0)
+                                    self.agent.metrics.log_route_costs(self.agent.vehicle_id, original_cost, new_cost)
+                                    self.agent.metrics.log_semaphore_penalty(self.agent.vehicle_id, base_cost, sem_penalty)
+                                    self.agent.metrics.log_traffic_penalty(self.agent.vehicle_id, base_cost, traffic_penalty)
+                                    self.agent.metrics.flush()
+                                except Exception:
+                                    pass
+                            # Registrar custos da nova rota
+                            if self.agent.metrics:
+                                try:
+                                    new_cost = getattr(self.agent, 'route_total_cost', 0.0)
+                                    self.agent.metrics.log_route_costs(self.agent.vehicle_id, original_cost, new_cost)
+                                    self.agent.metrics.flush()
+                                except Exception:
+                                    pass
                             
-                            # Notificar coordenador
-                            msg = Message(to="coordinator@localhost")
-                            msg.set_metadata("performative", "inform")
-                            msg.body = json.dumps({
-                                "type": "arrival",
-                                "vehicle_id": self.agent.vehicle_id,
-                                "travel_time": self.agent.total_travel_time,
-                                "waiting_time": self.agent.waiting_time
-                            })
-                            await self.send(msg)
+                            # Log apenas para alguns veículos (evitar spam)
+                            if self.agent.vehicle_id in ['v0', 'AMB0']:
+                                print(f"🔄 {self.agent.vehicle_id}: Chegou a {self.agent.start_node}, voltando para {self.agent.end_node}")
                         else:
-                            # Veículos normais: escolher NOVO DESTINO aleatório e continuar
-                            nodes_list = list(self.agent.nodes.keys())
-                            new_destination = random.choice([n for n in nodes_list if n != self.agent.current_node])
-                            
-                            # Recalcular rota para novo destino
-                            self.agent.end_node = new_destination
-                            self.agent.route = self.agent.calculate_route_astar(self.agent.current_node, new_destination)
-                            
-                            if self.agent.route:
-                                self.agent.route_index = 0
-                                self.agent.target_node = self.agent.route[0]
-                                # print(f"🔄 {self.agent.vehicle_id} escolheu novo destino: {new_destination}")
+                            print(f"⚠️ {self.agent.vehicle_id}: Sem rota de volta disponível! Mantendo posição.")
                     else:
                         self.agent.target_node = self.agent.route[self.agent.route_index]
             
@@ -520,18 +634,39 @@ class VehicleAgent(Agent):
                     
                     elif msg_type == 'blocked_edges_update':
                         # 🚧 RECEBER ATUALIZAÇÃO DE VIAS BLOQUEADAS
+                        start_ts = time.perf_counter()
                         blocked = data.get('blocked_edges', [])
                         old_count = len(self.agent.blocked_edges)
                         self.agent.blocked_edges = set(blocked)
                         
-                        print(f"\n🚧 {self.agent.vehicle_id}: Atualização de bloqueios recebida")
-                        print(f"🚧 {self.agent.vehicle_id}: Antes: {old_count} bloqueios")
-                        print(f"🚧 {self.agent.vehicle_id}: Agora: {len(blocked)} bloqueios")
-                        print(f"🚧 {self.agent.vehicle_id}: Bloqueios: {self.agent.blocked_edges}")
+                        print(f"\n🚧 {self.agent.vehicle_id} ({self.agent.vehicle_type}): Atualização de bloqueios recebida")
+                        print(f"🚧 {self.agent.vehicle_id}: Tipo: {self.agent.vehicle_type} | Antes: {old_count} | Agora: {len(blocked)}")
+                        if len(blocked) > 0:
+                            print(f"🚧 {self.agent.vehicle_id}: Arestas bloqueadas: {sorted(list(self.agent.blocked_edges))}")
+                        
+                        # 🚨 VERIFICAÇÃO CRÍTICA IMEDIATA: Verificar se está ATUALMENTE numa via que foi bloqueada
+                        if self.agent.route and self.agent.route_index < len(self.agent.route):
+                            current_node = self.agent.current_node
+                            target_node = self.agent.route[self.agent.route_index]
+                            
+                            # Verificar se a aresta atual está na lista de bloqueios
+                            is_blocked, edge_id = self.agent.is_edge_blocked(current_node, target_node)
+                            if is_blocked:
+                                print(f"🚨 {self.agent.vehicle_id}: DETECTADO em via BLOQUEADA no momento da atualização!")
+                                print(f"🚨 {self.agent.vehicle_id}: Aresta {current_node}->{target_node} (edge {edge_id}) foi bloqueada")
+                                print(f"🚨 {self.agent.vehicle_id}: Interrompendo movimento e recalculando IMEDIATAMENTE!\n")
+                        
                         print(f"🚧 {self.agent.vehicle_id}: Forçando recálculo de rota...\n")
                         
                         # Forçar recálculo de rota
                         self.agent.route = []  # Força recálculo na próxima iteração
+                        end_ts = time.perf_counter()
+                        if self.agent.metrics:
+                            try:
+                                self.agent.metrics.log_recalc_latency(self.agent.vehicle_id, start_ts, end_ts)
+                                self.agent.metrics.flush()
+                            except Exception:
+                                pass
                         
                 except json.JSONDecodeError:
                     print(f"❌ Erro ao decodificar JSON: {msg.body}")
@@ -989,14 +1124,15 @@ class DisruptorAgent(Agent):
         self.add_behaviour(receive_behaviour)
     
     def activate_disruption(self):
-        """Ativa disrupção bloqueando 6 vias aleatórias (evitando vias críticas do perímetro)"""
+        """Ativa disrupção bloqueando 3 RUAS (6 arestas - ambos os sentidos)"""
         if not self.disruption_active:
             # Identificar vias do perímetro (menos críticas para bloquear)
             # Vias do perímetro conectam nós (0,0), (0,5), (5,0), (5,5)
             perimeter_nodes = {'0_0', '0_5', '5_0', '5_5'}
             
-            # Filtrar vias que NÃO são do perímetro externo
-            available_edges = []
+            # Criar dicionário de PARES de arestas (ida e volta)
+            # Chave: tupla ordenada (nodeA, nodeB), Valor: lista de edge_ids
+            road_pairs = {}
             for edge_id, edge_data in self.edges.items():
                 from_node = edge_data['from']
                 to_node = edge_data['to']
@@ -1005,24 +1141,39 @@ class DisruptorAgent(Agent):
                 is_perimeter = (from_node in perimeter_nodes and to_node in perimeter_nodes)
                 
                 if not is_perimeter:
-                    available_edges.append(edge_id)
+                    # Criar chave ordenada para identificar a mesma rua em ambos sentidos
+                    road_key = tuple(sorted([from_node, to_node]))
+                    if road_key not in road_pairs:
+                        road_pairs[road_key] = []
+                    road_pairs[road_key].append(edge_id)
             
-            # Selecionar 6 arestas aleatórias das disponíveis
-            if len(available_edges) >= 6:
-                self.blocked_edges = set(random.sample(available_edges, 6))
+            # Selecionar 3 RUAS (que resultarão em 6 arestas bloqueadas)
+            available_roads = list(road_pairs.keys())
+            if len(available_roads) >= 3:
+                selected_roads = random.sample(available_roads, 3)
+                
+                # Bloquear TODAS as arestas das ruas selecionadas (ambos sentidos)
+                self.blocked_edges = set()
+                for road_key in selected_roads:
+                    for edge_id in road_pairs[road_key]:
+                        self.blocked_edges.add(edge_id)
+                
                 self.disruption_active = True
                 
-                # Mostrar quais vias foram bloqueadas
+                # Mostrar quais ruas foram bloqueadas (ambos sentidos)
                 blocked_info = []
-                for edge_id in self.blocked_edges:
-                    edge_data = self.edges[edge_id]
-                    blocked_info.append(f"{edge_data['from']} -> {edge_data['to']}")
+                for road_key in selected_roads:
+                    node_a, node_b = road_key
+                    edge_ids = road_pairs[road_key]
+                    blocked_info.append(f"{node_a} ↔ {node_b} (arestas {edge_ids})")
                 
                 print(f"\n" + "="*80)
                 print(f"🚧 DISRUPTOR: Disrupção ATIVADA!")
-                print(f"🚧 DISRUPTOR: {len(self.blocked_edges)} vias bloqueadas:")
+                print(f"🚧 DISRUPTOR: {len(selected_roads)} RUAS bloqueadas (AMBOS os sentidos):")
                 for info in blocked_info:
                     print(f"   🚧 {info}")
+                print(f"🚧 DISRUPTOR: Total de {len(self.blocked_edges)} arestas bloqueadas")
+                print(f"🚧 DISRUPTOR: IDs bloqueados: {sorted(list(self.blocked_edges))}")
                 print(f"🚧 DISRUPTOR: Preparando notificação para {self.coordinator_jid}")
                 print("="*80 + "\n")
                 
@@ -1030,7 +1181,7 @@ class DisruptorAgent(Agent):
                 self._schedule_notification()
                 return True
             else:
-                print(f"⚠️ DISRUPTOR: Não há vias suficientes disponíveis ({len(available_edges)} < 6)")
+                print(f"⚠️ DISRUPTOR: Não há ruas suficientes disponíveis ({len(available_roads)} < 3)")
         return False
     
     def deactivate_disruption(self):

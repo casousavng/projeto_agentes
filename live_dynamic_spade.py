@@ -9,13 +9,14 @@ Simulacao Dinamica de Trafego com SPADE + Pygame
 - Sistema de disrupção de vias (bloqueios aleatórios)
 
 CONTROLES:
-- P: Pausar/Continuar simulação
-- ESPAÇO: Ativar/Desativar disrupção (6 vias bloqueadas aleatoriamente)
+- ESPAÇO: Ativar/Desativar disrupção (3 ruas bloqueadas - ambos os sentidos)
+- F11: Alternar tela cheia
 - +/-: Ajustar velocidade da simulação
 - ESC: Sair
 
 FUNCIONALIDADE DE DISRUPÇÃO:
-Ao pressionar ESPAÇO, o DisruptorAgent bloqueia aleatoriamente 6 vias da rede.
+Ao pressionar ESPAÇO, o DisruptorAgent bloqueia aleatoriamente 3 RUAS da rede (6 arestas total).
+Cada rua é bloqueada em AMBOS os sentidos (ida e volta) para simular bloqueio físico real.
 Os veículos recalculam automaticamente suas rotas usando A* para evitar as vias bloqueadas.
 As vias bloqueadas são exibidas em VERMELHO com um X no meio.
 Pressione ESPAÇO novamente para remover os bloqueios.
@@ -122,7 +123,6 @@ class SPADETrafficSimulation:
         
         # Estado da simulacao
         self.running = False
-        self.paused = False
         self.asyncio_loop = None
         self.agent_thread = None
         
@@ -151,9 +151,9 @@ class SPADETrafficSimulation:
         self.point_b = str(grid_max) + "_" + str(grid_max)  # Canto inferior direito
         
         print("🚀 Simulacao SPADE inicializada!")
-        print(f"   Nos: {len(self.nodes)}")
-        print(f"   Arestas: {len(self.edges)}")
-        print(f"   Semaforos: {len(self.traffic_light_nodes)}")
+        print("   Nos: " + str(len(self.nodes)))
+        print("   Arestas: " + str(len(self.edges)))
+        print("   Semaforos: " + str(len(self.traffic_light_nodes)))
     
     def load_network_with_weights(self):
         """Carrega rede 6x6 com pesos diferentes e GRID RETO"""
@@ -596,14 +596,9 @@ class SPADETrafficSimulation:
         
         print("✅ Simulacao parada!")
     
-    def toggle_pause(self):
-        """Alterna pausa"""
-        self.paused = not self.paused
-        print(f"{'⏸️  Pausado' if self.paused else '▶️  Continuando'}")
-    
     def update(self):
         """Atualiza estado da simulacao"""
-        if not self.running or self.paused:
+        if not self.running:
             return
         
         self.stats['step'] += 1
@@ -940,11 +935,7 @@ class SPADETrafficSimulation:
         # Titulo
         title = self.font_title.render("SPADE Traffic", True, COLOR_ACCENT)
         self.screen.blit(title, (sidebar_x + 20, y_offset))
-        y_offset += 40
-        
-        subtitle = self.font_label.render("Comunicacao XMPP Real", True, COLOR_TEXT)
-        self.screen.blit(subtitle, (sidebar_x + 20, y_offset))
-        y_offset += 40
+        y_offset += 60
         
         # Estatisticas
         stats_title = self.font_stats.render("Estatisticas", True, COLOR_TEXT)
@@ -953,15 +944,13 @@ class SPADETrafficSimulation:
         
         stats_lines = [
             f"Step: {self.stats['step']}",
-            f"Total Veiculos: {self.stats['total_vehicles']}",
             f"",
             f"Veiculo Journey A->B:",
             f"  Velocidade: {self.stats['journey_speed']:.1f} px/s",
         ]
         
-        # Adicionar informações de tempo e distância
+        # Adicionar informações de tempo
         travel_time = self.stats['journey_travel_time']
-        cost_traveled = self.stats['journey_cost_traveled']
         
         # Formatar tempo de viagem (mm:ss)
         travel_mins = int(travel_time // 60)
@@ -969,13 +958,13 @@ class SPADETrafficSimulation:
         
         stats_lines.extend([
             f"  Tempo Total: {travel_mins:02d}:{travel_secs:02d}",
-            f"  Distancia: {cost_traveled:.0f}",
             f"",
             f"Agentes SPADE:",
             f"  Coordenador: 1",
+            f"  Disruptor: 1",
             f"  Veiculos: {len(self.vehicle_agents)}",
             f"  Semaforos: {len(self.traffic_light_agents)}",
-            f"  TOTAL: {1 + len(self.vehicle_agents) + len(self.traffic_light_agents)}"
+            f"  TOTAL: {2 + len(self.vehicle_agents) + len(self.traffic_light_agents)}"
         ])
         
         for line in stats_lines:
@@ -1004,7 +993,6 @@ class SPADETrafficSimulation:
         y_offset += 30
         
         controls = [
-            "P: Pausar/Continuar",
             "ESPACO: Disrupção (bloqueios)",
             "F11: Tela cheia",
             "ESC: Sair",
@@ -1027,7 +1015,8 @@ class SPADETrafficSimulation:
             if self.disruptor_agent.disruption_active:
                 status_text = "ATIVO"
                 status_color = (255, 100, 100)
-                blocked_text = f"Vias bloqueadas: {len(self.disruptor_agent.blocked_edges)}"
+                num_roads = len(self.disruptor_agent.blocked_edges) // 2  # Dividir por 2 pois cada rua tem 2 arestas
+                blocked_text = f"Ruas bloqueadas: {num_roads} ({len(self.disruptor_agent.blocked_edges)} arestas)"
             else:
                 status_text = "INATIVO"
                 status_color = (100, 255, 100)
@@ -1110,9 +1099,6 @@ class SPADETrafficSimulation:
                         # Toggle disrupção (ativar/desativar bloqueios)
                         if self.disruptor_agent:
                             self.disruptor_agent.toggle_disruption()
-                    elif event.key == pygame.K_p:
-                        # Tecla P para pause (alternativa ao ESPAÇO que agora é disruptor)
-                        self.toggle_pause()
                     elif event.key == pygame.K_PLUS or event.key == pygame.K_EQUALS:
                         self.update_speed_multiplier(0.2)
                     elif event.key == pygame.K_MINUS:
