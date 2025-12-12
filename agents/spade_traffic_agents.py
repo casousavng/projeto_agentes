@@ -1348,8 +1348,9 @@ class DisruptorAgent(Agent):
         receive_behaviour = self.ReceiveCommandsBehaviour()
         self.add_behaviour(receive_behaviour)
     
-    def activate_disruption(self):
-        """Ativa disrupção bloqueando 3 RUAS (6 arestas - ambos os sentidos)"""
+    
+    def activate_disruption(self, num_roads=3):
+        """Ativa disrupção bloqueando N RUAS (2N arestas - ambos os sentidos)"""
         if not self.disruption_active:
             # Identificar vias do perímetro (menos críticas para bloquear)
             # Vias do perímetro conectam nós (0,0), (0,5), (5,0), (5,5)
@@ -1372,10 +1373,10 @@ class DisruptorAgent(Agent):
                         road_pairs[road_key] = []
                     road_pairs[road_key].append(edge_id)
             
-            # Selecionar 3 RUAS (que resultarão em 6 arestas bloqueadas)
+            # Selecionar N RUAS (que resultarão em 2N arestas bloqueadas)
             available_roads = list(road_pairs.keys())
-            if len(available_roads) >= 3:
-                selected_roads = random.sample(available_roads, 3)
+            if len(available_roads) >= num_roads:
+                selected_roads = random.sample(available_roads, num_roads)
                 
                 # Bloquear TODAS as arestas das ruas selecionadas (ambos sentidos)
                 self.blocked_edges = set()
@@ -1406,7 +1407,7 @@ class DisruptorAgent(Agent):
                 self._schedule_notification()
                 return True
             else:
-                print(f"⚠️ DISRUPTOR: Não há ruas suficientes disponíveis ({len(available_roads)} < 3)")
+                print(f"⚠️ DISRUPTOR: Não há ruas suficientes disponíveis ({len(available_roads)} < {num_roads})")
         return False
     
     def deactivate_disruption(self):
@@ -1492,7 +1493,9 @@ class DisruptorAgent(Agent):
                     cmd = data.get('command')
                     
                     if cmd == 'activate':
-                        self.agent.activate_disruption()
+                        # Obter número de ruas a bloquear (default 3)
+                        num_roads = data.get('num_roads', 3)
+                        self.agent.activate_disruption(num_roads=num_roads)
                     elif cmd == 'deactivate':
                         self.agent.deactivate_disruption()
                     elif cmd == 'toggle':

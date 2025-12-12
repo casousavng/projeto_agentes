@@ -1,9 +1,9 @@
 metric,value
 recalc_latency_ms_avg,0.02
 recalc_latency_ms_p50,0.02
-recalc_latency_ms_p95,0.03
-detour_factor_avg,1.506
+recalc_latency_ms_p95,0.02
+detour_factor_avg,2.383
 detour_factor_p50,1.000
-detour_factor_p95,2.926
-semaphore_penalty_share_avg,0.3137
+detour_factor_p95,9.210
+semaphore_penalty_share_avg,0.4122
 traffic_penalty_share_avg,0.0000

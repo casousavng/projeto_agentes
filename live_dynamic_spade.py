@@ -365,18 +365,27 @@ class SPADETrafficSimulation:
         
         scale = min(available_width / map_width, available_height / map_height)
         
+        # Calcular offsets para centralizar
+        drawn_width = map_width * scale
+        drawn_height = map_height * scale
+        
+        offset_x = 20 + (available_width - drawn_width) / 2
+        offset_y = 20 + (available_height - drawn_height) / 2
+        
         return {
             'min_x': min_x,
             'max_x': max_x,
             'min_y': min_y,
             'max_y': max_y,
-            'scale': scale
+            'scale': scale,
+            'offset_x': offset_x,
+            'offset_y': offset_y
         }
     
     def world_to_screen(self, x, y):
         """Converte coordenadas do mundo para tela"""
-        screen_x = 20 + (x - self.viewport['min_x']) * self.viewport['scale']
-        screen_y = 20 + (y - self.viewport['min_y']) * self.viewport['scale']
+        screen_x = self.viewport['offset_x'] + (x - self.viewport['min_x']) * self.viewport['scale']
+        screen_y = self.viewport['offset_y'] + (y - self.viewport['min_y']) * self.viewport['scale']
         return int(screen_x), int(screen_y)
     
     def toggle_fullscreen(self):
@@ -863,36 +872,11 @@ class SPADETrafficSimulation:
         
         pygame.display.flip()
     
-    def draw_speed_slider(self, x, y):
-        """Desenha slider de controle de velocidade"""
-        slider_width = 200
-        slider_height = 10
-        
-        # Barra de fundo
-        pygame.draw.rect(self.screen, (60, 60, 60), (x, y, slider_width, slider_height), border_radius=5)
-        
-        # Calcular posição do handle (2.0x a 5.0x) - AUMENTADO
-        min_speed = 2.0
-        max_speed = 5.0
-        normalized = (self.speed_multiplier - min_speed) / (max_speed - min_speed)
-        handle_x = x + int(normalized * slider_width)
-        
-        # Barra preenchida
-        pygame.draw.rect(self.screen, COLOR_ACCENT, (x, y, handle_x - x, slider_height), border_radius=5)
-        
-        # Handle (circulo arrastável)
-        pygame.draw.circle(self.screen, COLOR_ACCENT, (handle_x, y + slider_height // 2), 12)
-        pygame.draw.circle(self.screen, COLOR_TEXT, (handle_x, y + slider_height // 2), 12, 2)
-        
-        # Armazenar posição do slider para detecção de clique
-        self.slider_rect = pygame.Rect(x - 10, y - 10, slider_width + 20, 30)
-        
-        # Label de velocidade
-        speed_text = self.font_label.render(f"{self.speed_multiplier:.1f}x", True, COLOR_TEXT)
-        self.screen.blit(speed_text, (x + slider_width + 15, y - 5))
+    # Slider removido
+    
     
     def draw_speed_buttons(self, x, y):
-        """Desenha botões +/- para controle de velocidade"""
+        """Desenha botões +/- para controle de velocidade e mostra valor atual"""
         button_size = 30
         
         # Botão -
@@ -900,20 +884,94 @@ class SPADETrafficSimulation:
         pygame.draw.rect(self.screen, (60, 60, 80), minus_rect, border_radius=5)
         pygame.draw.rect(self.screen, COLOR_ACCENT, minus_rect, 2, border_radius=5)
         minus_text = self.font_title.render("-", True, COLOR_TEXT)
-        self.screen.blit(minus_text, (x + 8, y + 2))
+        text_rect = minus_text.get_rect(center=minus_rect.center)
+        self.screen.blit(minus_text, text_rect)
         self.minus_button_rect = minus_rect
         
+        # Valor da velocidade (centralizado entre botões)
+        speed_text = self.font_title.render(f"{self.speed_multiplier:.1f}x", True, COLOR_ACCENT)
+        speed_rect = speed_text.get_rect(center=(x + button_size + 40, y + button_size // 2))
+        self.screen.blit(speed_text, speed_rect)
+        
         # Botão +
-        plus_rect = pygame.Rect(x + button_size + 10, y, button_size, button_size)
+        plus_rect = pygame.Rect(x + button_size + 80, y, button_size, button_size)
         pygame.draw.rect(self.screen, (60, 60, 80), plus_rect, border_radius=5)
         pygame.draw.rect(self.screen, COLOR_ACCENT, plus_rect, 2, border_radius=5)
         plus_text = self.font_title.render("+", True, COLOR_TEXT)
-        self.screen.blit(plus_text, (x + button_size + 17, y + 2))
+        text_rect = plus_text.get_rect(center=plus_rect.center)
+        self.screen.blit(plus_text, text_rect)
         self.plus_button_rect = plus_rect
         
-        # Label
-        label = self.font_label.render("Ajustar velocidade", True, (180, 180, 180))
-        self.screen.blit(label, (x + button_size * 2 + 20, y + 7))
+        # Label instrução
+        label = self.font_label.render("Ajustar Vel.", True, (180, 180, 180))
+        self.screen.blit(label, (x + button_size + 120, y + 7))
+
+    def draw_disruption_buttons(self, x, y):
+        """Desenha botões de disrupção"""
+        
+        # Título da seção já é desenhado fora
+        
+        levels = [
+            {"label": "N1 (3)", "roads": 3, "color": (255, 200, 100)},
+            {"label": "N2 (6)", "roads": 6, "color": (255, 150, 50)},
+            {"label": "N3 (9)", "roads": 9, "color": (255, 50, 50)}
+        ]
+        
+        # 3 botões lado a lado
+        # Largura total disponivel = SIDEBAR_WIDTH - 40 (margem esq/dir de 20)
+        # 260px disponivel
+        total_width = SIDEBAR_WIDTH - 40
+        spacing = 5
+        button_width = (total_width - (len(levels) - 1) * spacing) // len(levels)
+        button_height = 40
+        
+        self.disruption_buttons = []
+        
+        current_x = x
+        for level in levels:
+            rect = pygame.Rect(current_x, y, button_width, button_height)
+            
+            # Verificar se este nível está ativo
+            is_active = False
+            if self.disruptor_agent and self.disruptor_agent.disruption_active:
+                blocked_count = len(self.disruptor_agent.blocked_edges)
+                if blocked_count >= level["roads"] * 2 - 2 and blocked_count <= level["roads"] * 2 + 2:
+                     is_active = True
+            
+            # Cor do botão
+            bg_color = (60, 60, 60)
+            if is_active:
+                bg_color = (40, 80, 40) # Verde escuro se ativo
+                border_color = (100, 255, 100)
+            else:
+                border_color = level["color"]
+            
+            pygame.draw.rect(self.screen, bg_color, rect, border_radius=5)
+            pygame.draw.rect(self.screen, border_color, rect, 2, border_radius=5)
+            
+            text = self.font_label.render(level["label"], True, COLOR_TEXT)
+            text_rect = text.get_rect(center=rect.center)
+            self.screen.blit(text, text_rect)
+            
+            self.disruption_buttons.append({
+                "rect": rect,
+                "roads": level["roads"]
+            })
+            
+            current_x += button_width + spacing
+            
+        current_y = y + button_height + 10
+        
+        # Botão limpar (abaixo, largura total)
+        stop_rect = pygame.Rect(x, current_y, total_width, 30)
+        pygame.draw.rect(self.screen, (60, 20, 20), stop_rect, border_radius=5)
+        pygame.draw.rect(self.screen, (200, 50, 50), stop_rect, 2, border_radius=5)
+        
+        text = self.font_label.render("PARAR DISRUPCAO", True, (255, 200, 200))
+        text_rect = text.get_rect(center=stop_rect.center)
+        self.screen.blit(text, text_rect)
+        
+        self.stop_disruption_button_rect = stop_rect
     
     def update_speed_multiplier(self, delta):
         """Atualiza multiplicador de velocidade"""
@@ -924,11 +982,12 @@ class SPADETrafficSimulation:
     
     def draw_sidebar(self):
         """Desenha barra lateral com estatisticas"""
-        sidebar_x = WINDOW_WIDTH - SIDEBAR_WIDTH
+        screen_width, screen_height = self.screen.get_size()
+        sidebar_x = screen_width - SIDEBAR_WIDTH
         
         # Fundo
-        pygame.draw.rect(self.screen, COLOR_SIDEBAR, (sidebar_x, 0, SIDEBAR_WIDTH, WINDOW_HEIGHT))
-        pygame.draw.line(self.screen, COLOR_ACCENT, (sidebar_x, 0), (sidebar_x, WINDOW_HEIGHT), 2)
+        pygame.draw.rect(self.screen, COLOR_SIDEBAR, (sidebar_x, 0, SIDEBAR_WIDTH, screen_height))
+        pygame.draw.line(self.screen, COLOR_ACCENT, (sidebar_x, 0), (sidebar_x, screen_height), 2)
         
         y_offset = 20
         
@@ -979,30 +1038,19 @@ class SPADETrafficSimulation:
         self.screen.blit(speed_title, (sidebar_x + 20, y_offset))
         y_offset += 30
         
-        # Desenhar slider
-        self.draw_speed_slider(sidebar_x + 20, y_offset)
-        y_offset += 50
-        
-        # Botoes +/-
+        # Botoes +/- e Velocidade
         self.draw_speed_buttons(sidebar_x + 20, y_offset)
         y_offset += 50
         
-        # Controles
-        controls_title = self.font_stats.render("Controles", True, COLOR_TEXT)
-        self.screen.blit(controls_title, (sidebar_x + 20, y_offset))
+        # Botoes Disrupcao
+        dis_ctl_title = self.font_stats.render("Controle de Disrupcao", True, COLOR_TEXT)
+        self.screen.blit(dis_ctl_title, (sidebar_x + 20, y_offset))
         y_offset += 30
         
-        controls = [
-            "ESPACO: Disrupção (bloqueios)",
-            "F11: Tela cheia",
-            "ESC: Sair",
-            "+/-: Velocidade",
-        ]
+        self.draw_disruption_buttons(sidebar_x + 20, y_offset)
+        y_offset += 100 # Espaço ajustado
         
-        for ctrl in controls:
-            text = self.font_label.render(ctrl, True, COLOR_TEXT)
-            self.screen.blit(text, (sidebar_x + 20, y_offset))
-            y_offset += 20
+        # Redundancy removed: 'Controles' section (keyboard shortcuts) removed to save space and reduce clutter as requested
         
         y_offset += 20
         
@@ -1104,37 +1152,47 @@ class SPADETrafficSimulation:
                     elif event.key == pygame.K_MINUS:
                         self.update_speed_multiplier(-0.2)
                 
-                # Eventos do mouse para slider
+                # Eventos do mouse para botões
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     if event.button == 1:  # Botão esquerdo
                         mouse_pos = pygame.mouse.get_pos()
-                        # Verificar clique no slider
-                        if hasattr(self, 'slider_rect') and self.slider_rect.collidepoint(mouse_pos):
-                            self.slider_dragging = True
-                        # Verificar clique nos botões +/-
+                        
+                        # Verificar clique nos botões de velocidade
                         if hasattr(self, 'minus_button_rect') and self.minus_button_rect.collidepoint(mouse_pos):
                             self.update_speed_multiplier(-0.2)
                         if hasattr(self, 'plus_button_rect') and self.plus_button_rect.collidepoint(mouse_pos):
                             self.update_speed_multiplier(0.2)
-                
-                elif event.type == pygame.MOUSEBUTTONUP:
-                    if event.button == 1:
-                        self.slider_dragging = False
+                            
+                        # Verificar clique nos botões de disrupção
+                        if hasattr(self, 'disruption_buttons'):
+                            for btn in self.disruption_buttons:
+                                if btn['rect'].collidepoint(mouse_pos):
+                                    if self.disruptor_agent:
+                                        # Enviar comando de ativação com numero de ruas
+                                        # Precisamos interagir com o agente. Como estamos na thread principal 
+                                        # e o agente em outra thread/loop, o ideal seria usar mensagens
+                                        # Mas aqui temos acesso direto ao objeto agente.
+                                        
+                                        # Se já estiver ativo, desativamos primeiro para reativar limpo? 
+                                        # Ou apenas chamamos activate_disruption que lida com isso?
+                                        # O metodo activate_disruption verifica se active e retorna False.
+                                        # Entao vamos forçar deactivate se quiser mudar de nivel?
+                                        
+                                        # Estrategia: Desativar sempre antes de ativar novo nivel
+                                        if self.disruptor_agent.disruption_active:
+                                            self.disruptor_agent.deactivate_disruption()
+                                            
+                                        # Ativar com novo numero (pequeno delay pode ser necessario na logica real, mas aqui é chamada direta de metodo)
+                                        self.disruptor_agent.activate_disruption(num_roads=btn['roads'])
+                        
+                        # Botao Parar Disrupcao
+                        if hasattr(self, 'stop_disruption_button_rect') and self.stop_disruption_button_rect.collidepoint(mouse_pos):
+                            if self.disruptor_agent:
+                                self.disruptor_agent.deactivate_disruption()
                 
                 elif event.type == pygame.MOUSEMOTION:
-                    if self.slider_dragging and hasattr(self, 'slider_rect'):
-                        mouse_x = pygame.mouse.get_pos()[0]
-                        slider_x = WINDOW_WIDTH - SIDEBAR_WIDTH + 20
-                        slider_width = 200
-                        # Calcular nova velocidade baseada na posição do mouse (2.0x a 5.0x)
-                        normalized = max(0, min(1, (mouse_x - slider_x) / slider_width))
-                        min_speed = 2.0
-                        max_speed = 5.0
-                        new_speed = min_speed + normalized * (max_speed - min_speed)
-                        self.speed_multiplier = new_speed
-                        # Aplicar aos agentes
-                        for v_agent in self.vehicle_agents:
-                            v_agent.update_speed_multiplier(self.speed_multiplier)
+                    # Slider foi removido, mas mantemos o bloco para evitar erros se houver referencias
+                    pass
             
             self.update()
             self.draw()
